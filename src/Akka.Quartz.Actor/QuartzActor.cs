@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using Akka.Actor;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
+using Akka.Quartz.Actor.Exceptions;
 using Quartz;
 using Quartz.Impl;
 using IScheduler = Quartz.IScheduler;
@@ -62,11 +63,11 @@ namespace Akka.Quartz.Actor
         {
             if (createJob.To == null)
             {
-                Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException("createJob.To")));
+                Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.To))));
             }
             if (createJob.Trigger == null)
             {
-                Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException("createJob.Trigger")));
+                Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.Trigger))));
             }
             else
             {
@@ -99,7 +100,7 @@ namespace Akka.Quartz.Actor
                 }
                 else
                 {
-                    Context.Sender.Tell(new RemoveJobFail(removeJob.JobKey, removeJob.TriggerKey, new Exception("job not found")));
+                    Context.Sender.Tell(new RemoveJobFail(removeJob.JobKey, removeJob.TriggerKey, new JobNotFoundException()));
                 }
             }
             catch (Exception ex)

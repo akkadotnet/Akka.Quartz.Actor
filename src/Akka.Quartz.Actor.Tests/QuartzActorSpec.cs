@@ -3,6 +3,7 @@ using System.Threading;
 using Akka.Actor;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
+using Akka.Quartz.Actor.Exceptions;
 using Quartz;
 using Xunit;
 
@@ -20,9 +21,7 @@ namespace Akka.Quartz.Actor.Tests
             probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11));
             Thread.Sleep(TimeSpan.FromSeconds(10));
             probe.ExpectMsg("Hello");
-            Sys.Stop(quartzActor);
-
-            
+            Sys.Stop(quartzActor);            
         }
 
         [Fact]
@@ -67,7 +66,8 @@ namespace Akka.Quartz.Actor.Tests
             var probe = CreateTestProbe(Sys);
             var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActor");
             quartzActor.Tell(new RemoveJob(new JobKey("key"), new TriggerKey("key")));
-            ExpectMsg<RemoveJobFail>();
+            var failure=ExpectMsg<RemoveJobFail>();
+            Assert.IsType<JobNotFoundException>(failure.Reason);
             Sys.Stop(quartzActor);
         }
     }
