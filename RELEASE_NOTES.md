@@ -1,3 +1,8 @@
+#### 1.0.4 February 21 2017 ####
+Created the `JobNotFoundException` type. If a job is not found when invoking the `RemoveJob` command, 
+`RemoveJobFail` will contain an exception of this type instead of the string "job not found".
+
+
 #### 1.0.3 Januari 26 2017 ####
 updated to akka 1.1.3  
 Serializing the ActorPath and message to save in a persistent Quartz JobStore  
