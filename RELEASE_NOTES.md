@@ -1,3 +1,6 @@
+#### 1.2.0 February 18 2017 ####
+Updated Akka to 1.2.0, along with a number of other dependencies including Newtonsoft and Entity Framework.
+
 #### 1.0.4 February 21 2017 ####
 Created the `JobNotFoundException` type. If a job is not found when invoking the `RemoveJob` command, 
 `RemoveJobFail` will contain an exception of this type instead of the string "job not found".
