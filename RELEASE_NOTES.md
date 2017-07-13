@@ -1,3 +1,6 @@
+#### 1.2.3 July 13 2017 ####
+Updated Akka to 1.2.3
+
 #### 1.2.0 February 18 2017 ####
 Updated Akka to 1.2.0, along with a number of other dependencies including Newtonsoft and Entity Framework.
 
