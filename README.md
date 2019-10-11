@@ -10,7 +10,7 @@ Create a Receiver:
 ```csharp
 class Receiver: ActorBase
 {
- 	public MyActor()
+    public Receiver()
     {
     }
 
@@ -46,5 +46,5 @@ For more information, please see the unit test.
 
 For more information about quartz scheduler please see
 http://www.quartz-scheduler.net/documentation/
-For more information about akka .net please see
-http://getakka.net/docs/
+For more information about akka.net please see
+https://getakka.net/articles/intro/what-is-akka.html

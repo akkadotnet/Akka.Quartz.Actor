@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Specialized;
 using Akka.Actor;
+using Akka.Dispatch;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
 using Akka.Quartz.Actor.Exceptions;
@@ -22,18 +23,44 @@ namespace Akka.Quartz.Actor
 
         public QuartzActor()
         {
-            _scheduler = new StdSchedulerFactory().GetScheduler();
+            Init(null);
         }
 
         public QuartzActor(NameValueCollection props)
         {
-            _scheduler = new StdSchedulerFactory(props).GetScheduler();
+            Init(props);
         }
+
+        private void Init(NameValueCollection props)
+        {
+            if (props == null)
+            {
+                props = new NameValueCollection();
+            }
+            if (String.IsNullOrWhiteSpace(props.Get(StdSchedulerFactory.PropertySchedulerInstanceName)))
+            {
+                props.Set(StdSchedulerFactory.PropertySchedulerInstanceName, Guid.NewGuid().ToString());
+            }
+
+            ActorTaskScheduler.RunTask(async () =>
+            {
+                if (props == null)
+                    Scheduler = await new StdSchedulerFactory().GetScheduler();
+                else
+                    Scheduler = await new StdSchedulerFactory(props).GetScheduler();
+
+                await Scheduler.Start();
+                OnSchedulerCreated(Scheduler);
+            });
+        }
+
+        protected virtual void OnSchedulerCreated(IScheduler scheduler) { }
 
         public QuartzActor(IScheduler scheduler)
         {
-            _scheduler = scheduler;
+            Scheduler = scheduler;
             _externallySupplied = true;
+            OnSchedulerCreated(Scheduler);
         }
 
         protected override bool Receive(object message)
@@ -41,72 +68,68 @@ namespace Akka.Quartz.Actor
             return message.Match().With<CreateJob>(CreateJobCommand).With<RemoveJob>(RemoveJobCommand).WasHandled;
         }
 
-        protected override void PreStart()
-        {
-            if (!_externallySupplied)
-            {
-                _scheduler.Start();    
-            }
-            base.PreStart();
-        }
-
         protected override void PostStop()
         {
             if (!_externallySupplied)
             {
-                _scheduler.Shutdown();
+                ActorTaskScheduler.RunTask(() => Scheduler.Shutdown());
             }
             base.PostStop();
         }
 
         protected virtual void CreateJobCommand(CreateJob createJob)
         {
-            if (createJob.To == null)
+            ActorTaskScheduler.RunTask(async () =>
             {
-                Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.To))));
-            }
-            if (createJob.Trigger == null)
-            {
-                Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.Trigger))));
-            }
-            else
-            {
-
-                try
+                if (createJob.To == null)
                 {
-                    var job =
-                   QuartzJob.CreateBuilderWithData(createJob.To, createJob.Message)
-                       .WithIdentity(createJob.Trigger.JobKey)
-                       .Build();
-                    _scheduler.ScheduleJob(job, createJob.Trigger);
-
-                    Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
+                    Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.To))));
                 }
-                catch (Exception ex)
+                if (createJob.Trigger == null)
                 {
-                    Context.Sender.Tell(new CreateJobFail(createJob.Trigger.JobKey, createJob.Trigger.Key, ex));
+                    Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.Trigger))));
                 }
-            }
+                else
+                {
+                    try
+                    {
+                        var job =
+                        QuartzJob.CreateBuilderWithData(createJob.To, createJob.Message)
+                            .WithIdentity(createJob.Trigger.JobKey)
+                            .Build();
+                        await Scheduler.ScheduleJob(job, createJob.Trigger);
+                        Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
+                    }
+                    catch (Exception ex)
+                    {
+                        Context.Sender.Tell(new CreateJobFail(createJob.Trigger.JobKey, createJob.Trigger.Key, ex));
+                    }
+                }
+            });
         }
 
         protected virtual void RemoveJobCommand(RemoveJob removeJob)
         {
-            try
+            var sender = Context.Sender;
+            ActorTaskScheduler.RunTask(async () =>
             {
-                var deleted = _scheduler.DeleteJob(removeJob.JobKey);
-                if (deleted)
+                try
                 {
-                    Context.Sender.Tell(new JobRemoved(removeJob.JobKey, removeJob.TriggerKey));
+                    var deleted = await Scheduler.DeleteJob(removeJob.JobKey);
+                    if (deleted)
+                    {
+                        sender.Tell(new JobRemoved(removeJob.JobKey, removeJob.TriggerKey));
+                    }
+                    else
+                    {
+                        sender.Tell(new RemoveJobFail(removeJob.JobKey, removeJob.TriggerKey, new JobNotFoundException()));
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    Context.Sender.Tell(new RemoveJobFail(removeJob.JobKey, removeJob.TriggerKey, new JobNotFoundException()));
+                    sender.Tell(new RemoveJobFail(removeJob.JobKey, removeJob.TriggerKey, ex));
                 }
-            }
-            catch (Exception ex)
-            {
-                Context.Sender.Tell(new RemoveJobFail(removeJob.JobKey, removeJob.TriggerKey, ex));
-            }
+            });
         }
     }
 }

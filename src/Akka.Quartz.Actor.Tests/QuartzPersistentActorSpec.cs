@@ -15,8 +15,8 @@ namespace Akka.Quartz.Actor.Tests
         public void QuartzPersistentActor_Should_Create_Job()
         {
             var probe = CreateTestProbe(Sys);
-            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
-            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello", TriggerBuilder.Create().WithCronSchedule("*0/10 * * * * ?").Build()));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(Guid.NewGuid().ToString())), "QuartzActor");
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             ExpectMsg<JobCreated>();
             probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11));
             Thread.Sleep(TimeSpan.FromSeconds(10));
@@ -28,7 +28,7 @@ namespace Akka.Quartz.Actor.Tests
         public void QuartzPersistentActor_Should_Remove_Job()
         {
             var probe = CreateTestProbe(Sys);
-            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(Guid.NewGuid().ToString())), "QuartzActor");
             quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello remove", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             var jobCreated = ExpectMsg<JobCreated>();
             probe.ExpectMsg("Hello remove", TimeSpan.FromSeconds(11));
@@ -43,7 +43,7 @@ namespace Akka.Quartz.Actor.Tests
         public void QuartzPersistentActor_Should_Fail_With_Null_Trigger()
         {
             var probe = CreateTestProbe(Sys);
-            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(Guid.NewGuid().ToString())), "QuartzActor");
             quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello", null));
             var failedJob = ExpectMsg<CreateJobFail>();
             Assert.NotNull(failedJob.Reason);
@@ -53,8 +53,8 @@ namespace Akka.Quartz.Actor.Tests
         [Fact]
         public void QuartzPersistentActor_Should_Fail_With_Null_Actor()
         {
-            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
-            quartzActor.Tell(new CreatePersistentJob(null, "Hello", TriggerBuilder.Create().WithCronSchedule(" * * * * * ?").Build()));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(Guid.NewGuid().ToString())), "QuartzActor");
+            quartzActor.Tell(new CreatePersistentJob(null, "Hello", TriggerBuilder.Create().WithCronSchedule("* * * * * ?").Build()));
             var failedJob = ExpectMsg<CreateJobFail>();
             Assert.NotNull(failedJob.Reason);
             Sys.Stop(quartzActor);
@@ -64,7 +64,7 @@ namespace Akka.Quartz.Actor.Tests
         public void QuartzPersistentActor_Should_Not_Remove_UnExisting_Job()
         {
             var probe = CreateTestProbe(Sys);
-            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(Guid.NewGuid().ToString())), "QuartzActor");
             quartzActor.Tell(new RemoveJob(new JobKey("key"), new TriggerKey("key")));
             var failure=ExpectMsg<RemoveJobFail>();
             Assert.IsType<JobNotFoundException>(failure.Reason);
@@ -80,7 +80,7 @@ namespace Akka.Quartz.Actor.Tests
             var firstIncarnation = firstSystem.ActorOf(Props.Create(() => new Relaying(firstProbe)), "relay");
             Watch(firstIncarnation);
 
-            var firstQuartz = firstSystem.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
+            var firstQuartz = firstSystem.ActorOf(Props.Create(() => new QuartzPersistentActor("cust-scheduler")), "QuartzActor");
             firstQuartz.Tell(new CreatePersistentJob(firstIncarnation.Path, "Hello", TriggerBuilder.Create().WithCronSchedule("0/2 * * * * ?").Build()));
             ExpectMsg<JobCreated>();
             firstProbe.ExpectMsg("Hello", TimeSpan.FromSeconds(10));
@@ -90,7 +90,7 @@ namespace Akka.Quartz.Actor.Tests
             // simulate a restart
             // use the same quartz scheduler which simulates retrieval from quartz jobstore
             var secondSystem = ActorSystem.Create("test", DefaultConfig);
-            secondSystem.ActorOf(Props.Create(() => new QuartzPersistentActor()), "QuartzActor");
+            secondSystem.ActorOf(Props.Create(() => new QuartzPersistentActor("cust-scheduler")), "QuartzActor");
             var secondProbe = CreateTestProbe(secondSystem);
             var secondIncarnation = secondSystem.ActorOf(Props.Create(() => new Relaying(secondProbe)), "relay");
             secondProbe.ExpectMsgFrom(secondIncarnation, "Hello", TimeSpan.FromSeconds(10));
@@ -101,7 +101,7 @@ namespace Akka.Quartz.Actor.Tests
 
         private class Relaying : ReceiveActor
         {
-            private IActorRef _relay;
+            private readonly IActorRef _relay;
 
             public Relaying(IActorRef relay)
             {

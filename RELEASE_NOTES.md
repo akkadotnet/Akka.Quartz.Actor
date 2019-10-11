@@ -1,3 +1,7 @@
+#### 1.3.2 October 10 2019 ####
+Updated Akka to 1.3.9
+Updated Quartz to 3.0.7
+
 #### 1.3.1 October 10 2017 ####
 Updated Akka to 1.3.1
 

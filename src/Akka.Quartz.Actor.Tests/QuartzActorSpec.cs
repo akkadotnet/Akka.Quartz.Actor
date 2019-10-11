@@ -11,12 +11,17 @@ namespace Akka.Quartz.Actor.Tests
 {
     public class QuartzActorSpec : TestKit.Xunit2.TestKit
     {
+        public QuartzActorSpec(): base()
+        {
+
+        }
+
         [Fact]
         public void QuartzActor_Should_Create_Job()
         {
             var probe = CreateTestProbe(Sys);
             var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActor");
-            quartzActor.Tell(new CreateJob(probe, "Hello", TriggerBuilder.Create().WithCronSchedule("*0/10 * * * * ?").Build()));
+            quartzActor.Tell(new CreateJob(probe, "Hello", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             ExpectMsg<JobCreated>();
             probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11));
             Thread.Sleep(TimeSpan.FromSeconds(10));
@@ -31,7 +36,7 @@ namespace Akka.Quartz.Actor.Tests
             var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActor");
             quartzActor.Tell(new CreateJob(probe, "Hello remove", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             var jobCreated = ExpectMsg<JobCreated>();
-            probe.ExpectMsg("Hello remove", TimeSpan.FromSeconds(11));
+            probe.ExpectMsg("Hello remove", TimeSpan.FromSeconds(12));
             quartzActor.Tell(new RemoveJob(jobCreated.JobKey, jobCreated.TriggerKey));
             ExpectMsg<JobRemoved>();
             Thread.Sleep(TimeSpan.FromSeconds(10));
