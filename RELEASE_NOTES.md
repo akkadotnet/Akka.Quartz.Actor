@@ -1,3 +1,7 @@
+#### 1.3.3 November 14 2019 ####
+Updated Akka to 1.3.15
+Updated many depedencies of the integration test suite
+
 #### 1.3.2 October 10 2019 ####
 Updated Akka to 1.3.9
 Updated Quartz to 3.0.7
