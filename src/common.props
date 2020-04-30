@@ -13,7 +13,7 @@ Updated Quartz to 3.0.7</PackageReleaseNotes>
     </NoWarn>
   </PropertyGroup>
   <PropertyGroup>
-    <AkkaVersion>1.4.1</AkkaVersion>
+    <AkkaVersion>1.4.5</AkkaVersion>
     <QuartzVersion>3.0.7</QuartzVersion>
     <XunitVersion>2.4.1</XunitVersion>
     <TestSdkVersion>15.9.0</TestSdkVersion>
