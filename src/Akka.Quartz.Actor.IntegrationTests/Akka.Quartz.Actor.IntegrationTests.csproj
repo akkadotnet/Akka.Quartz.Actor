@@ -12,7 +12,7 @@
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="5.0.2" />
     <PackageReference Include="Quartz" Version="$(QuartzVersion)" />
     <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.0.4" />
-    <PackageReference Include="System.Data.SQLite" Version="1.0.113.6" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.113.7" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Runtime.Remoting" />
     <Reference Include="System.Xml.Linq" />
