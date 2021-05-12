@@ -1,0 +1,27 @@
+version: 2
+updates:
+- package-ecosystem: nuget
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: Quartz
+    versions:
+    - 3.3.1
+  - dependency-name: Akka
+    versions:
+    - 1.4.16
+    - 1.4.17
+  - dependency-name: Akka.TestKit.Xunit2
+    versions:
+    - 1.4.16
+    - 1.4.17
+  - dependency-name: Microsoft.Data.Sqlite.Core
+    versions:
+    - 5.0.3
+    - 5.0.4
+  - dependency-name: Microsoft.NET.Test.Sdk
+    versions:
+    - 16.8.3
+    - 16.9.1
