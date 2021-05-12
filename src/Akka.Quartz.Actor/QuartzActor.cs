@@ -17,7 +17,7 @@ namespace Akka.Quartz.Actor
     /// </summary>
     public class QuartzActor : ActorBase
     {
-        protected IScheduler Scheduler { get; private set; }
+        protected readonly IScheduler _scheduler;
 
         private readonly bool _externallySupplied;
 

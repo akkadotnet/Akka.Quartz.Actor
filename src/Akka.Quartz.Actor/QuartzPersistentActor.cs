@@ -14,9 +14,10 @@ namespace Akka.Quartz.Actor
     /// </summary>
     public class QuartzPersistentActor : QuartzActor
     {
-        public QuartzPersistentActor(string schedulerName)
-            : base(new NameValueCollection() { [StdSchedulerFactory.PropertySchedulerInstanceName] = schedulerName })
+
+        public QuartzPersistentActor()
         {
+            this.AddSystemToScheduler();
         }
 
         public QuartzPersistentActor(IScheduler scheduler)
