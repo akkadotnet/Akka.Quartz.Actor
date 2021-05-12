@@ -2,9 +2,9 @@
   <PropertyGroup>
     <Copyright>Copyright © 2015-2021 .NET Foundation</Copyright>
     <Authors>Akka</Authors>
-    <VersionPrefix>1.3.3</VersionPrefix>
-    <PackageReleaseNotes>Updated Akka to 1.3.9
-Updated Quartz to 3.0.7</PackageReleaseNotes>
+    <VersionPrefix>1.4.19</VersionPrefix>
+    <PackageReleaseNotes>Updated Akka to 1.4.19
+upgraded to Quartz.NET 3.3.2</PackageReleaseNotes>
     <PackageIconUrl>http://getakka.net/images/akkalogo.png</PackageIconUrl>
     <PackageProjectUrl>https://github.com/akkadotnet/Akka.Quartz.Actor</PackageProjectUrl>
     <PackageLicenseUrl>https://github.com/akkadotnet/Akka.Quartz.Actor/blob/master/LICENSE</PackageLicenseUrl>
