@@ -1,3 +1,6 @@
+#### 1.4.31 December 21 2021 ####
+* [Update Akka.NET to v1.4.31](https://github.com/akkadotnet/akka.net/releases/tag/1.4.31)
+
 #### 1.4.25 September 9 2021 ####
 * [Update Akka.NET to v1.4.25](https://github.com/akkadotnet/akka.net/releases/tag/1.4.25)
 * [Update Quartz.NET to 3.3.3](https://github.com/akkadotnet/Akka.Quartz.Actor/pull/173)
