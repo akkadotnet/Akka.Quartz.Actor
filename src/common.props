@@ -17,6 +17,6 @@ upgraded to Quartz.NET 3.3.2</PackageReleaseNotes>
     <QuartzVersion>3.3.3</QuartzVersion>
     <XunitVersion>2.4.1</XunitVersion>
     <XunitRunnerVersion>2.4.3</XunitRunnerVersion>
-    <TestSdkVersion>17.0.0</TestSdkVersion>
+    <TestSdkVersion>17.1.0</TestSdkVersion>
   </PropertyGroup>
 </Project>
