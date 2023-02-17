@@ -9,7 +9,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="$(XunitRunnerVersion)" />
     <PackageReference Include="xunit" Version="$(XunitVersion)" />
     <PackageReference Include="Akka.TestKit.Xunit2" Version="$(AkkaVersion)" />
-    <PackageReference Include="FluentAssertions" Version="6.8.0" />
+    <PackageReference Include="FluentAssertions" Version="6.10.0" />
     <PackageReference Include="Quartz" Version="$(QuartzVersion)" />
   </ItemGroup>
 
