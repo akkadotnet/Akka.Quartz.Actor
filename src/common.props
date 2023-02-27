@@ -14,7 +14,7 @@ upgraded to Quartz.NET 3.3.2</PackageReleaseNotes>
   </PropertyGroup>
   <PropertyGroup>
     <AkkaVersion>1.4.49</AkkaVersion>
-    <QuartzVersion>3.6.0</QuartzVersion>
+    <QuartzVersion>3.6.2</QuartzVersion>
     <XunitVersion>2.4.2</XunitVersion>
     <XunitRunnerVersion>2.4.5</XunitRunnerVersion>
     <TestSdkVersion>17.4.1</TestSdkVersion>
