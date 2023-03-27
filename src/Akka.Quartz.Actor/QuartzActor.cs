@@ -65,7 +65,17 @@ namespace Akka.Quartz.Actor
 
         protected override bool Receive(object message)
         {
-            return message.Match().With<CreateJob>(CreateJobCommand).With<RemoveJob>(RemoveJobCommand).WasHandled;
+            switch (message)
+            {
+                case CreateJob createJob:
+                    CreateJobCommand(createJob);
+                    return true;
+                case RemoveJob removeJob: 
+                    RemoveJobCommand(removeJob); 
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         protected override void PostStop()
