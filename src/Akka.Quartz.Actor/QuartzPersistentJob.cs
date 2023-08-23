@@ -35,7 +35,7 @@ namespace Akka.Quartz.Actor
 
         public static JobBuilder CreateBuilderWithData(ActorPath actorPath, object message, ActorSystem system)
         {
-            Serializer messageSerializer = system.Serialization.FindSerializerFor(message);
+            Serializer messageSerializer = system.Serialization.FindSerializerForType(typeof(object));
             var serializedMessage = messageSerializer.ToBinary(message);
             var serializedPath = actorPath.ToSerializationFormat();
             var jdm = new JobDataMap();
