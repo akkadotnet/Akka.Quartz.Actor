@@ -11,7 +11,7 @@
     <PackageReference Include="EntityFramework" Version="6.4.4" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="7.0.11" />
     <PackageReference Include="Quartz" Version="$(QuartzVersion)" />
-    <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.5" />
+    <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.6" />
     <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Runtime.Remoting" />
