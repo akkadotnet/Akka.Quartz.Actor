@@ -19,4 +19,4 @@ jobs:
     name: Ubuntu
     vmImage: 'ubuntu-latest'
     scriptFileName: ./build.sh
-    scriptArgs: all
+    scriptArgs: RunTestsNet

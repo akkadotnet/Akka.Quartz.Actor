@@ -9,6 +9,28 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akka.Quartz.Actor.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akka.Quartz.Actor.IntegrationTests", "src\Akka.Quartz.Actor.IntegrationTests\Akka.Quartz.Actor.IntegrationTests.csproj", "{6F4BDCE1-AFEA-444B-BA13-B560E24C94C6}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "build", "build", "{FB34DCD0-D371-472E-8E7D-0B29FE0B6D88}"
+	ProjectSection(SolutionItems) = preProject
+		build.cmd = build.cmd
+		build.fsx = build.fsx
+		build.ps1 = build.ps1
+		README.md = README.md
+		RELEASE_NOTES.md = RELEASE_NOTES.md
+		src\Directory.Build.props = src\Directory.Build.props
+		src\Directory.Generated.props = src\Directory.Generated.props
+		src\Directory.Packages.props = src\Directory.Packages.props
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "build-system", "build-system", "{9B4742AA-8EED-486D-9607-BACFD98D3FB9}"
+	ProjectSection(SolutionItems) = preProject
+		build-system\azure-pipeline.template.yaml = build-system\azure-pipeline.template.yaml
+		build-system\linux-pr-validation.yaml = build-system\linux-pr-validation.yaml
+		build-system\nightly-builds.yaml = build-system\nightly-builds.yaml
+		build-system\README.md = build-system\README.md
+		build-system\windows-pr-validation.yaml = build-system\windows-pr-validation.yaml
+		build-system\windows-release.yaml = build-system\windows-release.yaml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +52,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{9B4742AA-8EED-486D-9607-BACFD98D3FB9} = {FB34DCD0-D371-472E-8E7D-0B29FE0B6D88}
 	EndGlobalSection
 EndGlobal

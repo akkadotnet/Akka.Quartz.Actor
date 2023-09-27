@@ -20,6 +20,10 @@ jobs:
         displayName: "Use .NET SDK 3.1"
         inputs:
           version: 3.1.x
+      - task: UseDotNet@2
+        displayName: "Use .NET 6.0 SDK"
+        inputs:
+          version: 6.x
       # Linux or macOS
       - task: Bash@3 
         displayName: Linux / OSX Build

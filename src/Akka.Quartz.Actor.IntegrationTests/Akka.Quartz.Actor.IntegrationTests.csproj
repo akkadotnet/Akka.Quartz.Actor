@@ -1,28 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk" ToolsVersion="Current">
-  <Import Project="..\common.props" />
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
+    <TargetFrameworks>$(NetFrameworkTestVersion);$(NetTestVersion)</TargetFrameworks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="$(TestSdkVersion)" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="$(XunitRunnerVersion)" />
-    <PackageReference Include="xunit" Version="$(XunitVersion)" />
-    <PackageReference Include="Akka.TestKit.Xunit2" Version="$(AkkaVersion)" />
-    <PackageReference Include="EntityFramework" Version="6.4.4" />
-    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="7.0.11" />
-    <PackageReference Include="Quartz" Version="$(QuartzVersion)" />
-    <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.6" />
-    <PackageReference Include="System.Data.SQLite" Version="1.0.118" />
-    <Reference Include="System.Numerics" />
-    <Reference Include="System.Runtime.Remoting" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="Akka.TestKit.Xunit2" />
+    <PackageReference Include="EntityFramework" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- <PackageReference Include="Microsoft.Data.Sqlite.Core" /> -->
   </ItemGroup>
   <ItemGroup>
     <Content Include="tables_sqlite.sql">
@@ -30,13 +17,7 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Akka.Quartz.Actor\Akka.Quartz.Actor.csproj">
-      <Project>{80e909a0-2379-408d-9711-70d1bf3147a2}</Project>
-      <Name>Akka.Quartz.Actor</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Akka.Quartz.Actor\Akka.Quartz.Actor.csproj" />
   </ItemGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
