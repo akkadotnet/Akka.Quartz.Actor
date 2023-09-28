@@ -30,7 +30,7 @@ steps:
   displayName: 'FAKE Build'
   inputs:
     filename: build.cmd
-    arguments: 'All nugetpublishurl=https://www.nuget.org/api/v2/package nugetkey=$(nugetKey)'
+    arguments: 'All nugetpublishurl=https://api.nuget.org/v3/index.json nugetkey=$(nugetKey)'
 
 - task: GitHubRelease@0
   displayName: 'GitHub release (create)'

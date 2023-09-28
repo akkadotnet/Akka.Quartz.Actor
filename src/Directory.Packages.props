@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <AkkaVersion>1.5.12</AkkaVersion>
+  </PropertyGroup>
+
+  <!-- App dependencies -->
+  <ItemGroup>
+    <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
+    <PackageVersion Include="Quartz" Version="3.7.0" />
+  </ItemGroup>
+
+  <!-- Test dependencies -->
+  <ItemGroup>
+    <PackageVersion Include="EntityFramework" Version="6.4.4" />
+    <PackageVersion Condition="'$(TargetFramework)' == 'net472'" Include="Microsoft.Data.Sqlite" Version="2.2.6" />
+    <PackageVersion Condition="'$(TargetFramework)' != 'net472'" Include="Microsoft.Data.Sqlite" Version="7.0.11" />
+    <PackageVersion Include="Akka.Hosting.TestKit" Version="$(AkkaVersion)" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.7.2" />
+    <PackageVersion Include="xunit" Version="2.5.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.5.0" />
+    <PackageVersion Include="Akka.TestKit.Xunit2" Version="$(AkkaVersion)" />
+  </ItemGroup>
+
+  <!-- SourceLink support for all Akka.NET projects -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="1.1.1" />
+  </ItemGroup>
+</Project>

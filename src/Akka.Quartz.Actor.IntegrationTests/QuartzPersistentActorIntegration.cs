@@ -6,18 +6,25 @@ using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
 using Quartz;
 using Xunit;
-using System.Data.SQLite;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using System.Collections.Specialized;
 using Quartz.Impl.AdoJobStore.Common;
 using System.Data;
 using Quartz.Impl;
+using Xunit.Abstractions;
 
 namespace Akka.Quartz.Actor.IntegrationTests
 {
     public class QuartzPersistentActorIntegration : TestKit.Xunit2.TestKit, IClassFixture<QuartzPersistentActorIntegration.SqliteFixture>
     {
+        private SqliteFixture _fixture;
+        public QuartzPersistentActorIntegration(ITestOutputHelper output, SqliteFixture fixture)
+            : base(nameof(QuartzPersistentActorIntegration), output)
+        {
+            _fixture = fixture;
+        }
+        
         [Fact]
         public async Task QuartzPersistentActor_DB_Should_Create_Job()
         {
@@ -61,7 +68,7 @@ namespace Akka.Quartz.Actor.IntegrationTests
             Sys.Stop(quartzActor);
         }
 
-        private class SqliteFixture : IDisposable
+        public class SqliteFixture : IDisposable
         {
             private const string DatabaseFileName = "quartz-jobs.db";
 
@@ -72,12 +79,11 @@ namespace Akka.Quartz.Actor.IntegrationTests
                     File.Delete(DatabaseFileName);
                 }
 
-                SQLiteConnection.CreateFile(DatabaseFileName);
-                string script = File.ReadAllText("tables_sqlite.sql");
+                var script = File.ReadAllText("tables_sqlite.sql");
 
-                using (SQLiteConnection dbConnection = new SQLiteConnection($"Data Source={DatabaseFileName};Version=3;"))
+                using (var dbConnection = new SqliteConnection($"Data Source={DatabaseFileName};"))
                 {
-                    using (SQLiteCommand command = new SQLiteCommand(script, dbConnection))
+                    using (var command = new SqliteCommand(script, dbConnection))
                     {
                         dbConnection.Open();
                         command.ExecuteNonQuery();
