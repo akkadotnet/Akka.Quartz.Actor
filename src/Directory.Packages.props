@@ -7,7 +7,7 @@
   <!-- App dependencies -->
   <ItemGroup>
     <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Quartz" Version="3.7.0" />
+    <PackageVersion Include="Quartz" Version="3.8.0" />
   </ItemGroup>
 
   <!-- Test dependencies -->
