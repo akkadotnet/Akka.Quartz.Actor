@@ -9,7 +9,7 @@
   <PropertyGroup>
     <NetFrameworkTestVersion>net472</NetFrameworkTestVersion>
     <NetStandardLibVersion>netstandard2.0</NetStandardLibVersion>
-    <NetTestVersion>net6.0</NetTestVersion>
+    <NetTestVersion>net8.0</NetTestVersion>
   </PropertyGroup>
   <!-- GitHub SourceLink -->
   <ItemGroup>

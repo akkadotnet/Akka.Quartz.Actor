@@ -1,3 +1,9 @@
+#### 1.5.33 January 3 2025 ####
+
+* [Update Akka.NET to v1.5.33](https://github.com/akkadotnet/akka.net/releases/tag/1.5.33)
+* Updated .NET test version to 8.0
+* Changed quartz.serializer.type in integration tests from "binary" to "newtonsoft" (binary formatter is deprecated in Quartz.NET and .NET)
+
 #### 1.5.13 October 4 2023 ####
 
 * [Update Akka.NET to v1.5.13](https://github.com/akkadotnet/akka.net/releases/tag/1.5.13)

@@ -37,7 +37,7 @@ let outputNuGet = output @@ "nuget"
 
 // Configuration values for tests
 let testNetFrameworkVersion = "net472"
-let testNetVersion = "net6.0"
+let testNetVersion = "net8.0"
 
 Target "Clean" (fun _ ->
     ActivateFinalTarget "KillCreatedProcesses"

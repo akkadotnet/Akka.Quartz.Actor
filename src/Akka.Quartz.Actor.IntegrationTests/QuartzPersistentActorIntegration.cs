@@ -51,7 +51,7 @@ namespace Akka.Quartz.Actor.IntegrationTests
                 ["quartz.dataSource.default.provider"] = "sqlite-custom",
                 ["quartz.dataSource.default.connectionString"] = "Data Source=quartz-jobs.db",
                 ["quartz.jobStore.lockHandler.type"] = "Quartz.Impl.AdoJobStore.UpdateLockRowSemaphore, Quartz",
-                ["quartz.serializer.type"] = "binary"
+                ["quartz.serializer.type"] = "newtonsoft"
             };
 
             ISchedulerFactory sf = new StdSchedulerFactory(properties);
