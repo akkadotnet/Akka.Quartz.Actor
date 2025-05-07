@@ -6,13 +6,13 @@
   <!-- App dependencies -->
   <ItemGroup>
     <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Quartz" Version="3.13.1" />
+    <PackageVersion Include="Quartz" Version="3.14.0" />
     <PackageVersion Include="Quartz.Serialization.Json" Version="3.13.1" />
   </ItemGroup>
   <!-- Test dependencies -->
   <ItemGroup>
     <PackageVersion Include="EntityFramework" Version="6.5.1" />
-    <PackageVersion Condition="'$(TargetFramework)' == 'net472'" Include="Microsoft.Data.Sqlite" Version="2.2.6" />
+    <PackageVersion Condition="'$(TargetFramework)' == 'net472'" Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageVersion Condition="'$(TargetFramework)' != 'net472'" Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageVersion Include="Akka.Hosting.TestKit" Version="$(AkkaVersion)" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
