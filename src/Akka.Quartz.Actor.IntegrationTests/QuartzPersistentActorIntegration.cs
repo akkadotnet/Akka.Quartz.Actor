@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Quartz.Actor.Commands;
@@ -9,9 +8,6 @@ using Xunit;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using System.Collections.Specialized;
-using Quartz.Impl.AdoJobStore.Common;
-using System.Data;
-using Quartz.Impl;
 
 namespace Akka.Quartz.Actor.IntegrationTests
 {
