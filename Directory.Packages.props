@@ -1,30 +1,29 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <AkkaVersion>1.5.60</AkkaVersion>
+    <AkkaVersion>1.5.71</AkkaVersion>
   </PropertyGroup>
   <!-- App dependencies -->
   <ItemGroup>
     <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Quartz" Version="3.14.0" />
-    <PackageVersion Include="Quartz.Serialization.Json" Version="3.13.1" />
+    <PackageVersion Include="Quartz" Version="4.0.1" />
+    <PackageVersion Include="Quartz.Serialization.Newtonsoft" Version="4.0.1" />
   </ItemGroup>
   <!-- Test dependencies -->
   <ItemGroup>
-    <PackageVersion Include="EntityFramework" Version="6.5.1" />
-    <PackageVersion Condition="'$(TargetFramework)' == 'net472'" Include="Microsoft.Data.Sqlite" Version="9.0.0" />
-    <PackageVersion Condition="'$(TargetFramework)' != 'net472'" Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <PackageVersion Include="EntityFramework" Version="6.5.2" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Akka.Hosting.TestKit" Version="$(AkkaVersion)" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageVersion Include="xunit" Version="2.9.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.0">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageVersion>
-    <PackageVersion Include="Akka.TestKit.Xunit2" Version="$(AkkaVersion)" />
+    <PackageVersion Include="Akka.TestKit.Xunit" Version="$(AkkaVersion)" />
   </ItemGroup>
   <!-- SourceLink support for all Akka.NET projects -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.400" />
   </ItemGroup>
 </Project>

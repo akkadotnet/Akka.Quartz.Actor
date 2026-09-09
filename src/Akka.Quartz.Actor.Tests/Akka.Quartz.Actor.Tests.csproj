@@ -1,21 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
-    <TargetFrameworks>$(NetFrameworkTestVersion);$(NetTestVersion)</TargetFrameworks>
+  <PropertyGroup>
+    <TargetFramework>$(NetFrameworkTestVersion)</TargetFramework>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
-    <TargetFramework>$(NetTestVersion)</TargetFramework>
-  </PropertyGroup>
-  
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="Akka.TestKit.Xunit2" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Akka.TestKit.Xunit" />
   </ItemGroup>
 
   <ItemGroup>

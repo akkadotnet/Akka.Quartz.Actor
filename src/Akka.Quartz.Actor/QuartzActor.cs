@@ -6,7 +6,6 @@ using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
 using Akka.Quartz.Actor.Exceptions;
 using Quartz;
-using Quartz.Impl;
 using IScheduler = Quartz.IScheduler;
 
 namespace Akka.Quartz.Actor
@@ -17,9 +16,16 @@ namespace Akka.Quartz.Actor
     /// </summary>
     public class QuartzActor : ActorBase
     {
+        /// <summary>
+        /// Quartz no longer exposes this as a public constant (StdSchedulerFactory was removed in 4.0),
+        /// so it's kept here for callers that used to reach it via StdSchedulerFactory.PropertySchedulerInstanceName.
+        /// </summary>
+        public const string PropertySchedulerInstanceName = "quartz.scheduler.instanceName";
+
         protected IScheduler Scheduler { get; private set; }
 
         private readonly bool _externallySupplied;
+        private StandaloneSchedulerFactory _schedulerFactory;
 
         public QuartzActor()
         {
@@ -37,17 +43,15 @@ namespace Akka.Quartz.Actor
             {
                 props = new NameValueCollection();
             }
-            if (String.IsNullOrWhiteSpace(props.Get(StdSchedulerFactory.PropertySchedulerInstanceName)))
+            if (String.IsNullOrWhiteSpace(props.Get(PropertySchedulerInstanceName)))
             {
-                props.Set(StdSchedulerFactory.PropertySchedulerInstanceName, Guid.NewGuid().ToString());
+                props.Set(PropertySchedulerInstanceName, Guid.NewGuid().ToString());
             }
 
             ActorTaskScheduler.RunTask(async () =>
             {
-                if (props == null)
-                    Scheduler = await new StdSchedulerFactory().GetScheduler();
-                else
-                    Scheduler = await new StdSchedulerFactory(props).GetScheduler();
+                _schedulerFactory = QuartzSchedulerBuilder.Create().UseProperties(props).Build();
+                Scheduler = await _schedulerFactory.GetScheduler();
 
                 await Scheduler.Start();
                 OnSchedulerCreated(Scheduler);
@@ -82,7 +86,17 @@ namespace Akka.Quartz.Actor
         {
             if (!_externallySupplied)
             {
-                ActorTaskScheduler.RunTask(() => Scheduler.Shutdown());
+                ActorTaskScheduler.RunTask(async () =>
+                {
+                    if (_schedulerFactory != null)
+                    {
+                        await _schedulerFactory.DisposeAsync();
+                    }
+                    else if (Scheduler != null)
+                    {
+                        await Scheduler.Shutdown();
+                    }
+                });
             }
             base.PostStop();
         }
