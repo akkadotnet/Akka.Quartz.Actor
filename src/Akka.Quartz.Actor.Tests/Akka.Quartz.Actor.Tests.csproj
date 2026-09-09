@@ -11,13 +11,14 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="Akka.TestKit.Xunit" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Akka.Quartz.Actor\Akka.Quartz.Actor.csproj"/>
+    <ProjectReference Include="..\Akka.Quartz.Actor\Akka.Quartz.Actor.csproj" />
   </ItemGroup>
   
 </Project>

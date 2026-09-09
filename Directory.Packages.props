@@ -6,6 +6,7 @@
   <!-- App dependencies -->
   <ItemGroup>
     <PackageVersion Include="Akka" Version="$(AkkaVersion)" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.0" />
     <PackageVersion Include="Quartz" Version="4.0.1" />
     <PackageVersion Include="Quartz.Serialization.Newtonsoft" Version="4.0.1" />
   </ItemGroup>
