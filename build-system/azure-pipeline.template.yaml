@@ -27,10 +27,10 @@ jobs:
           useGlobalJson: true
           
       - task: UseDotNet@2
-        displayName: "Use .NET 8 runtime"
+        displayName: "Use .NET 10 runtime"
         inputs:
           packageType: runtime
-          version: 8.x
+          version: 10.x
       
       - script: dotnet tool restore
         displayName: 'Restore dotnet tools'
