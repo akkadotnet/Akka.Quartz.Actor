@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Specialized;
 using Akka.Actor;
+using Akka.Dispatch;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
-using Quartz.Impl;
 using IScheduler = Quartz.IScheduler;
 
 namespace Akka.Quartz.Actor
@@ -15,7 +15,7 @@ namespace Akka.Quartz.Actor
     public class QuartzPersistentActor : QuartzActor
     {
         public QuartzPersistentActor(string schedulerName)
-            : base(new NameValueCollection() { [StdSchedulerFactory.PropertySchedulerInstanceName] = schedulerName })
+            : base(new NameValueCollection() { [PropertySchedulerInstanceName] = schedulerName })
         {
         }
 
@@ -63,21 +63,23 @@ namespace Akka.Quartz.Actor
             }
             else
             {
-
-                try
+                ActorTaskScheduler.RunTask(async () =>
                 {
-                    var job =
-                    QuartzPersistentJob.CreateBuilderWithData(createJob.To, createJob.Message, Context.System)
-                        .WithIdentity(createJob.Trigger.JobKey)
-                        .Build();
-                    Scheduler.ScheduleJob(job, createJob.Trigger);
+                    try
+                    {
+                        var job =
+                        QuartzPersistentJob.CreateBuilderWithData(createJob.To, createJob.Message, Context.System)
+                            .WithIdentity(createJob.Trigger.JobKey)
+                            .Build();
+                        await Scheduler.ScheduleJob(job, createJob.Trigger);
 
-                    Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
-                }
-                catch (Exception ex)
-                {
-                    Context.Sender.Tell(new CreateJobFail(createJob.Trigger.JobKey, createJob.Trigger.Key, ex));
-                }
+                        Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
+                    }
+                    catch (Exception ex)
+                    {
+                        Context.Sender.Tell(new CreateJobFail(createJob.Trigger.JobKey, createJob.Trigger.Key, ex));
+                    }
+                });
             }
         }
     }

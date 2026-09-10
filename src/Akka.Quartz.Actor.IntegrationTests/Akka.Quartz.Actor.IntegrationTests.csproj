@@ -1,22 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk" ToolsVersion="Current">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-  </PropertyGroup>
-  
-  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
-    <TargetFrameworks>$(NetFrameworkTestVersion);$(NetTestVersion)</TargetFrameworks>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
-    <TargetFramework>$(NetTestVersion)</TargetFramework>
+  <PropertyGroup>
+    <TargetFramework>$(NetFrameworkTestVersion)</TargetFramework>
   </PropertyGroup>
-  
+
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="Quartz.Serialization.Json" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Quartz.Serialization.Newtonsoft" />
     <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="Akka.TestKit.Xunit2" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Akka.TestKit.Xunit" />
     <PackageReference Include="EntityFramework" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <!-- <PackageReference Include="Microsoft.Data.Sqlite.Core" /> -->

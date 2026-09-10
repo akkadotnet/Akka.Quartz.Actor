@@ -7,9 +7,7 @@
   </PropertyGroup>
   <!-- Visual Studio C# settings -->
   <PropertyGroup>
-    <NetFrameworkTestVersion>net472</NetFrameworkTestVersion>
-    <NetStandardLibVersion>netstandard2.0</NetStandardLibVersion>
-    <NetTestVersion>net8.0</NetTestVersion>
+    <NetFrameworkTestVersion>net10.0</NetFrameworkTestVersion>
   </PropertyGroup>
   <!-- GitHub SourceLink -->
   <ItemGroup>

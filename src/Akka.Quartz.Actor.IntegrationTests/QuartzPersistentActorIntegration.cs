@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Quartz.Actor.Commands;
@@ -9,14 +8,10 @@ using Xunit;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using System.Collections.Specialized;
-using Quartz.Impl.AdoJobStore.Common;
-using System.Data;
-using Quartz.Impl;
-using Xunit.Abstractions;
 
 namespace Akka.Quartz.Actor.IntegrationTests
 {
-    public class QuartzPersistentActorIntegration : TestKit.Xunit2.TestKit, IClassFixture<QuartzPersistentActorIntegration.SqliteFixture>
+    public class QuartzPersistentActorIntegration : TestKit.Xunit.TestKit, IClassFixture<QuartzPersistentActorIntegration.SqliteFixture>
     {
         private SqliteFixture _fixture;
         public QuartzPersistentActorIntegration(ITestOutputHelper output, SqliteFixture fixture)
@@ -28,44 +23,31 @@ namespace Akka.Quartz.Actor.IntegrationTests
         [Fact]
         public async Task QuartzPersistentActor_DB_Should_Create_Job()
         {
-            DbProvider.RegisterDbMetadata("sqlite-custom", new DbMetadata()
-            {
-                AssemblyName = typeof(SqliteConnection).Assembly.GetName().Name,
-                ConnectionType = typeof(SqliteConnection),
-                CommandType = typeof(SqliteCommand),
-                ParameterType = typeof(SqliteParameter),
-                ParameterDbType = typeof(DbType),
-                ParameterDbTypePropertyName = "DbType",
-                ParameterNamePrefix = "@",
-                ExceptionType = typeof(SqliteException),
-                BindByName = true
-            });
-
             var properties = new NameValueCollection
             {
-                ["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.JobStoreTX, Quartz",
+                ["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.LocalTransactionJobStore, Quartz",
                 ["quartz.jobStore.useProperties"] = "false",
                 ["quartz.jobStore.dataSource"] = "default",
                 ["quartz.jobStore.tablePrefix"] = "qrtz_",
                 ["quartz.jobStore.driverDelegateType"] = "Quartz.Impl.AdoJobStore.SQLiteDelegate, Quartz",
-                ["quartz.dataSource.default.provider"] = "sqlite-custom",
+                ["quartz.dataSource.default.provider"] = "SQLite-Microsoft",
                 ["quartz.dataSource.default.connectionString"] = "Data Source=quartz-jobs.db",
-                ["quartz.jobStore.lockHandler.type"] = "Quartz.Impl.AdoJobStore.UpdateLockRowSemaphore, Quartz",
                 ["quartz.serializer.type"] = "newtonsoft"
             };
 
-            ISchedulerFactory sf = new StdSchedulerFactory(properties);
-            var sched = await sf.GetScheduler();
-            await sched.Start();
+            StandaloneSchedulerFactory sf = QuartzSchedulerBuilder.Create().UseProperties(properties).Build();
+            var sched = await sf.GetScheduler(TestContext.Current.CancellationToken);
+            await sched.Start(TestContext.Current.CancellationToken);
 
             var probe = CreateTestProbe(Sys);
             var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(sched)), "QuartzActor");
             quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, new { Greeting = "hello" }, TriggerBuilder.Create().WithCronSchedule("0/5 * * * * ?").Build()));
-            ExpectMsg<JobCreated>();
-            probe.ExpectMsg(new { Greeting = "hello" }, TimeSpan.FromSeconds(7));
-            await Task.Delay(TimeSpan.FromSeconds(7));
-            probe.ExpectMsg(new { Greeting = "hello" });
+            ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg(new { Greeting = "hello" }, TimeSpan.FromSeconds(7), cancellationToken: TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(7), TestContext.Current.CancellationToken);
+            probe.ExpectMsg(new { Greeting = "hello" }, cancellationToken: TestContext.Current.CancellationToken);
             Sys.Stop(quartzActor);
+            await sf.DisposeAsync();
         }
 
         public class SqliteFixture : IDisposable

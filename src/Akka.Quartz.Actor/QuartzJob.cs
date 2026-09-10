@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Util.Internal;
 using Quartz;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Akka.Quartz.Actor
@@ -13,7 +14,7 @@ namespace Akka.Quartz.Actor
         private const string MessageKey = "message";
         private const string ActorKey = "actor";
 
-        public Task Execute(IJobExecutionContext context)
+        public ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
         {
             var jdm = context.JobDetail.JobDataMap;
             if (jdm.ContainsKey(MessageKey) && jdm.ContainsKey(ActorKey))
@@ -23,10 +24,10 @@ namespace Akka.Quartz.Actor
                     actor.Tell(jdm[MessageKey]);
                 }
             }
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
-        public static JobBuilder CreateBuilderWithData(IActorRef actorRef, object message)
+        public static JobBuilder<QuartzJob> CreateBuilderWithData(IActorRef actorRef, object message)
         {
             var jdm = new JobDataMap();
             jdm.AddAndReturn(MessageKey, message).Add(ActorKey, actorRef);
