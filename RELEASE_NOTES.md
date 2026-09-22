@@ -4,6 +4,7 @@
 * Drop support for .NET Standard and .NET Framework; target .NET 10 only
 * Breaking: `IJob.Execute` now returns `ValueTask` and takes a `CancellationToken`, matching Quartz 4.0's `IJob` interface
 * Replace `Quartz.Serialization.Json` with `Quartz.Serialization.Newtonsoft` (the former is now an empty shim package in Quartz 4.0)
+* Existing Quartz 3 ADO job stores must be upgraded using the [Quartz 4 database migration scripts](https://www.quartz-scheduler.net/documentation/quartz-4.x/migration-guide.html) before starting this version. Keep the existing data; the fresh-install schema scripts drop tables. Audit stored cron expressions as described in the guide. Persisted jobs with the previous `byte[]` message format remain readable, while newly created jobs use a Base64 string.
 * Behavioral change: Quartz 4.0 removed its process-wide scheduler registry, so two `QuartzPersistentActor`s given the same scheduler instance name no longer share one in-memory scheduler within a process. Only a persistent job store now lets a new incarnation recover jobs from an earlier one.
 * Test projects upgraded from xunit v2 to xunit.v3, using the new `Akka.TestKit.Xunit` package; test projects now build as executables (`OutputType=Exe`) and run under Microsoft.Testing.Platform (`dotnet test --project <csproj>` or the built executable directly)
 * Update all other dependencies to their latest stable versions

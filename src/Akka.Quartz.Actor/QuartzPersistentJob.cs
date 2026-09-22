@@ -23,12 +23,21 @@ namespace Akka.Quartz.Actor
             var jdm = context.JobDetail.JobDataMap;
             if (jdm.ContainsKey(MessageKey) && jdm.ContainsKey(ActorKey))
             {
-                if (jdm[ActorKey] is string actorPath && jdm[MessageKey] is string serializedMessage && context.Scheduler.Context[SysKey] is ActorSystem sys)
+                if (jdm[ActorKey] is string actorPath && context.Scheduler.Context[SysKey] is ActorSystem sys)
                 {
-                    ActorSelection selection = sys.ActorSelection(actorPath);
-                    byte[] messageBytes = Convert.FromBase64String(serializedMessage);
-                    var message = sys.Serialization.FindSerializerForType(typeof(object)).FromBinary(messageBytes, typeof(object));
-                    selection.Tell(message);
+                    // Jobs saved before the Quartz 4 upgrade contain raw bytes; new jobs contain Base64.
+                    byte[] messageBytes = jdm[MessageKey] switch
+                    {
+                        byte[] existingBytes => existingBytes,
+                        string serializedMessage => Convert.FromBase64String(serializedMessage),
+                        _ => null
+                    };
+                    if (messageBytes != null)
+                    {
+                        ActorSelection selection = sys.ActorSelection(actorPath);
+                        var message = sys.Serialization.FindSerializerForType(typeof(object)).FromBinary(messageBytes, typeof(object));
+                        selection.Tell(message);
+                    }
                 }
             }
 
