@@ -24,6 +24,12 @@
     <Content Include="tables_sqlite.sql">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="quartz3_legacy_job.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="schema_30_to_40_upgrade_sqlite.sql">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Akka.Quartz.Actor\Akka.Quartz.Actor.csproj" />
