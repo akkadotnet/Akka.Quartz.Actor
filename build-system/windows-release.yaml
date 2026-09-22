@@ -1,4 +1,4 @@
-# Release task for Akka.Streams.Kafka
+# Release task for Akka.Quartz.Actor
 # See https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema for reference
 
 trigger:
@@ -12,9 +12,9 @@ variables:
   - name: githubConnectionName
     value: AkkaDotNet_Releases
   - name: projectName
-    value: Akka.Streams.Kafka
+    value: Akka.Quartz.Actor
   - name: githubRepositoryName
-    value: akkadotnet/Akka.Streams.Kafka
+    value: akkadotnet/Akka.Quartz.Actor
 
 jobs:
   - job: Release
@@ -29,6 +29,9 @@ jobs:
           
       - powershell: ./build.ps1
         displayName: 'Update Release Notes'
+
+      - powershell: ./scripts/assertReleaseTag.ps1
+        displayName: 'Validate release tag matches package version'
 
       # Pack without version suffix for release
       - script: dotnet pack -c Release -o $(Build.ArtifactStagingDirectory)/nuget
