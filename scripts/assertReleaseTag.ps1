@@ -16,3 +16,6 @@ if ([string]::IsNullOrWhiteSpace($packageVersion) -or $tag -cne $packageVersion)
 }
 
 Write-Output "Release tag '$tag' matches package version '$packageVersion'."
+
+$isPrerelease = $packageVersion.Contains('-').ToString().ToLowerInvariant()
+Write-Host "##vso[task.setvariable variable=QuartzReleaseIsPrerelease]$isPrerelease"

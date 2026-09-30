@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Specialized;
+using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Dispatch;
+using Akka.Event;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
 using Akka.Quartz.Actor.Exceptions;
@@ -53,8 +55,8 @@ namespace Akka.Quartz.Actor
                 _schedulerFactory = QuartzSchedulerBuilder.Create().UseProperties(props).Build();
                 Scheduler = await _schedulerFactory.GetScheduler();
 
-                await Scheduler.Start();
                 OnSchedulerCreated(Scheduler);
+                await Scheduler.Start();
             });
         }
 
@@ -86,19 +88,25 @@ namespace Akka.Quartz.Actor
         {
             if (!_externallySupplied)
             {
-                ActorTaskScheduler.RunTask(async () =>
-                {
-                    if (_schedulerFactory != null)
-                    {
-                        await _schedulerFactory.DisposeAsync();
-                    }
-                    else if (Scheduler != null)
-                    {
-                        await Scheduler.Shutdown();
-                    }
-                });
+                // PostStop cannot resume work through an actor mailbox that is being terminated.
+                _ = ShutdownSchedulerAsync(_schedulerFactory, Scheduler, Context.GetLogger());
             }
             base.PostStop();
+        }
+
+        private static async Task ShutdownSchedulerAsync(StandaloneSchedulerFactory factory, IScheduler scheduler, ILoggingAdapter log)
+        {
+            try
+            {
+                if (factory != null)
+                    await factory.DisposeAsync().ConfigureAwait(false);
+                else if (scheduler != null)
+                    await scheduler.Shutdown().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                log.Error(exception, "Failed to dispose the actor-owned Quartz scheduler.");
+            }
         }
 
         protected virtual void CreateJobCommand(CreateJob createJob)
@@ -108,10 +116,12 @@ namespace Akka.Quartz.Actor
                 if (createJob.To == null)
                 {
                     Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.To))));
+                    return;
                 }
                 if (createJob.Trigger == null)
                 {
                     Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.Trigger))));
+                    return;
                 }
                 else
                 {

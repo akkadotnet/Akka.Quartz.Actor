@@ -25,7 +25,7 @@ jobs:
         inputs:
           packageType: 'sdk'
           useGlobalJson: true
-          
+
       - pwsh: |
           $globalJsonPath = Join-Path $env:BUILD_SOURCESDIRECTORY 'global.json'
           $sdkVersion = (Get-Content $globalJsonPath -Raw | ConvertFrom-Json).sdk.version
@@ -42,6 +42,12 @@ jobs:
           packageType: runtime
           version: $(DotNetRuntimeVersion)
 
+      - task: UseDotNet@2
+        displayName: 'Use .NET 8 runtime for the offline Quartz 3 migration helper tests'
+        inputs:
+          packageType: runtime
+          version: 8.x
+
       - script: dotnet tool restore
         displayName: 'Restore dotnet tools'
 
@@ -55,26 +61,22 @@ jobs:
         continueOnError: false
 
       - pwsh: |
-          Get-ChildItem `
-            -Recurse `
-            -File `
-            -Include '*Tests.csproj' `
-            -Exclude '*examples*', '*benchmarks*' `
-          | ForEach-Object { `
-            dotnet test -c Release --no-build --project $_.FullName --results-directory TestResults -- --report-trx `
-          }
+          ./scripts/tests/runTests.Tests.ps1
+          $excludeDatabaseTests = '$(Agent.OS)' -ne 'Linux'
+          ./scripts/runTests.ps1 -ExcludeDatabaseTests:$excludeDatabaseTests -ResultsDirectory "$(Build.SourcesDirectory)/TestResults/$(Build.BuildId)"
         displayName: 'Run tests'
-        continueOnError: true # Allow continuation even if tests fail
 
       - task: PublishTestResults@2
+        condition: succeededOrFailed()
         inputs:
           testResultsFormat: VSTest
-          testResultsFiles: '**/*.trx' #TestResults folder usually
+          testResultsFiles: 'TestResults/$(Build.BuildId)/**/*.trx'
           testRunTitle: ${{ parameters.name }}
           mergeTestResults: true
-          failTaskOnFailedTests: false
+          failTaskOnFailedTests: true
+          failTaskOnMissingResultsFile: true
           publishRunAttachments: true
-          
+
       - pwsh: |
           $coverageFiles = Get-ChildItem -Path "$(Build.SourcesDirectory)/TestResults" -Filter "*.cobertura.xml" -Recurse
           $hasCoverageFiles = $coverageFiles.Count -gt 0
@@ -101,10 +103,17 @@ jobs:
         condition: and(always(), eq(variables['HasCoverageFiles'], 'True'))
         continueOnError: true
         artifact: 'CoverageReports-$(Agent.OS)-$(Build.BuildId)'
-          
+
       - script: dotnet pack -c Release --no-build -o $(Build.ArtifactStagingDirectory)/nuget
         displayName: 'Create packages'
-          
+
+      - pwsh: ./scripts/publishUpgradeTools.ps1 -OutputDirectory "$(Build.ArtifactStagingDirectory)/upgrade-tools"
+        displayName: 'Publish standalone upgrade helpers'
+
+      - publish: $(Build.ArtifactStagingDirectory)/upgrade-tools
+        displayName: 'Publish upgrade helper artifacts'
+        artifact: 'upgrade-tools-$(Agent.OS)'
+
       - task: PublishBuildArtifacts@1
         displayName: 'Publish artifacts'
         inputs:

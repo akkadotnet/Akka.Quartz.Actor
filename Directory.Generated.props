@@ -1,18 +1,15 @@
 <Project>
   <PropertyGroup>
-    <VersionPrefix>1.6.0-beta1</VersionPrefix>
-    <PackageReleaseNotes>* Upgrade to [Quartz.NET 4.0](https://www.quartz-scheduler.net/posts/2026-09-03-quartznet-4.0-released.html)
-* Drop support for .NET Standard and .NET Framework; target .NET 10 only
-* Breaking: `IJob.Execute` now returns `ValueTask` and takes a `CancellationToken`, matching Quartz 4.0's `IJob` interface
-* Replace `Quartz.Serialization.Json` with `Quartz.Serialization.Newtonsoft` (the former is now an empty shim package in Quartz 4.0)
-* **Action required for existing ADO job stores.** Quartz 4 validates its schema at startup and will not run against an un-migrated Quartz 3 database. Before starting 4.x, apply the [3.x-to-4.0 migration scripts](https://github.com/quartznet/quartznet/tree/v4.0.1/database/migrations/4.0) for your database:
-  1. `schema_30_to_40_upgrade_&lt;db&gt;.sql` — adds the columns and the `QRTZ_PAUSED_JOB_GRPS` table that 4.x requires. Safe to run while 3.x nodes are still up.
-  2. `schema_30_to_40_indexes_&lt;db&gt;.sql` — aligns the index set. **Not** safe during a mixed 3.x/4.x window; run it only after the last 3.x node has shut down, because it drops the index 3.x drives its misfire sweep from.
-
-  Do **not** use `tables_&lt;db&gt;.sql` to upgrade — those are fresh-install scripts that begin by dropping every `QRTZ_` table and will erase your saved jobs. See the [Quartz 4 migration guide](https://www.quartz-scheduler.net/documentation/quartz-4.x/migration-guide.html) for the accompanying code-level changes, and audit cron expressions carried over from 3.x: a textual day-of-week with a step (`MON/2`) silently changes meaning in 4.x.
-* Persisted jobs written by Akka.Quartz.Actor 1.5.x store their message as a `byte[]` and remain readable after the migration; newly created jobs store it as a Base64 string. Both formats are handled, so no data migration of job payloads is needed.
-* Behavioral change: Quartz 4.0 removed its process-wide scheduler registry, so two `QuartzPersistentActor`s given the same scheduler instance name no longer share one in-memory scheduler within a process. Only a persistent job store now lets a new incarnation recover jobs from an earlier one.
-* Test projects upgraded from xunit v2 to xunit.v3, using the new `Akka.TestKit.Xunit` package; test projects now build as executables (`OutputType=Exe`) and run under Microsoft.Testing.Platform (`dotnet test --project &lt;csproj&gt;` or the built executable directly)
-* Update all other dependencies to their latest stable versions</PackageReleaseNotes>
+    <VersionPrefix>1.5.71-beta1</VersionPrefix>
+    <PackageReleaseNotes>* Align with **Akka.NET 1.5.71**; upgrade to **Quartz 4.0.1** and target **.NET 10 only**. This drops .NET Standard/.NET Framework and older .NET support despite retaining aligned 1.5 package numbering. Users who cannot move to .NET 10 should pin Akka.Quartz.Actor **1.5.59**.
+* **Read the [upgrade guide](https://github.com/akkadotnet/Akka.Quartz.Actor/blob/dev/docs/upgrading-to-quartz4.md) before upgrading** ([local copy](docs/upgrading-to-quartz4.md)). It is also included in the NuGet package and the separate upgrade-helper archive.
+* Existing ADO stores require the [official Quartz 4.0.1 schema upgrade script](https://github.com/quartznet/quartznet/tree/v4.0.1/database/migrations/4.0), a cron audit and an offline cutover. Never use the destructive fresh-install `tables_&lt;db&gt;.sql` scripts. Quartz **4.0.1 rejects** textual weekday steps such as `MON/2`; select replacements deliberately.
+* Added separate .NET 8 / Quartz 3 binary-to-Newtonsoft converter and .NET 10 / Quartz 4 read-only auditor for **SQL Server, PostgreSQL and SQLite**. Conversion defaults to dry-run, requires explicit trust and stopped-scheduler acknowledgements to apply, preserves schedule columns, and rolls back on failure. Custom BLOB triggers require application-specific migration. Neither helper starts a scheduler or applies schema changes.
+* Legacy Akka message `byte[]` values inside compatible Newtonsoft JSON remain readable. This does **not** make BinaryFormatter-backed database blobs readable: convert those before leaving Quartz 3. Newly saved messages use Base64 strings, so mixed old/new writers and application-only rollback are unsafe; see the upgrade guide.
+* Replace `Quartz.Serialization.Json` with `Quartz.Serialization.Newtonsoft`, explicitly keep `quartz.serializer.type=newtonsoft` for existing Newtonsoft stores, and update direct Quartz packages/APIs together. `IJob.Execute` returns `ValueTask` and receives a `CancellationToken`; see the [pinned upstream migration guide](https://github.com/quartznet/quartznet/blob/v4.0.1/docs/documentation/quartz-4.x/migration-guide.md).
+* Quartz 4 removed the process-wide scheduler registry. Identical scheduler names no longer share a RAM scheduler; explicitly supply a shared scheduler where needed.
+* Install persistent actor context **before** starting an actor-owned scheduler. `OnSchedulerCreated` overrides now run before startup. Documented readiness ordering for caller-owned schedulers; actor-owned schedulers now dispose independently of a stopped actor mailbox.
+* Invalid job requests return one failure and create no job. Added real SQL Server/PostgreSQL container conversion and delivery checks, plus SQLite binary-conversion, rollback, restart, misfire, failed-write, schema and audit regressions and scheduler lifecycle checks.
+* Run all `*Tests.csproj` projects in CI, fail immediately on each test process failure and require fresh reports with executed tests. Test projects use xunit.v3 / Microsoft.Testing.Platform.</PackageReleaseNotes>
   </PropertyGroup>
 </Project>

@@ -56,10 +56,12 @@ namespace Akka.Quartz.Actor
             if (createJob.To == null)
             {
                 Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException("createJob.To")));
+                return;
             }
             if (createJob.Trigger == null)
             {
                 Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException("createJob.Trigger")));
+                return;
             }
             else
             {
