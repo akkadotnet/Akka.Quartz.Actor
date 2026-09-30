@@ -1,6 +1,18 @@
 <Project>
   <PropertyGroup>
     <VersionPrefix>1.6.0-beta1</VersionPrefix>
-    <PackageReleaseNotes>* Upgrade to Quartz.NET 4.0 and target .NET 10 only</PackageReleaseNotes>
+    <PackageReleaseNotes>* Upgrade to [Quartz.NET 4.0](https://www.quartz-scheduler.net/posts/2026-09-03-quartznet-4.0-released.html)
+* Drop support for .NET Standard and .NET Framework; target .NET 10 only
+* Breaking: `IJob.Execute` now returns `ValueTask` and takes a `CancellationToken`, matching Quartz 4.0's `IJob` interface
+* Replace `Quartz.Serialization.Json` with `Quartz.Serialization.Newtonsoft` (the former is now an empty shim package in Quartz 4.0)
+* **Action required for existing ADO job stores.** Quartz 4 validates its schema at startup and will not run against an un-migrated Quartz 3 database. Before starting 4.x, apply the [3.x-to-4.0 migration scripts](https://github.com/quartznet/quartznet/tree/main/database/migrations/4.0) for your database:
+  1. `schema_30_to_40_upgrade_&lt;db&gt;.sql` — adds the columns and the `QRTZ_PAUSED_JOB_GRPS` table that 4.x requires. Safe to run while 3.x nodes are still up.
+  2. `schema_30_to_40_indexes_&lt;db&gt;.sql` — aligns the index set. **Not** safe during a mixed 3.x/4.x window; run it only after the last 3.x node has shut down, because it drops the index 3.x drives its misfire sweep from.
+
+  Do **not** use `tables_&lt;db&gt;.sql` to upgrade — those are fresh-install scripts that begin by dropping every `QRTZ_` table and will erase your saved jobs. See the [Quartz 4 migration guide](https://www.quartz-scheduler.net/documentation/quartz-4.x/migration-guide.html) for the accompanying code-level changes, and audit cron expressions carried over from 3.x: a textual day-of-week with a step (`MON/2`) silently changes meaning in 4.x.
+* Persisted jobs written by Akka.Quartz.Actor 1.5.x store their message as a `byte[]` and remain readable after the migration; newly created jobs store it as a Base64 string. Both formats are handled, so no data migration of job payloads is needed.
+* Behavioral change: Quartz 4.0 removed its process-wide scheduler registry, so two `QuartzPersistentActor`s given the same scheduler instance name no longer share one in-memory scheduler within a process. Only a persistent job store now lets a new incarnation recover jobs from an earlier one.
+* Test projects upgraded from xunit v2 to xunit.v3, using the new `Akka.TestKit.Xunit` package; test projects now build as executables (`OutputType=Exe`) and run under Microsoft.Testing.Platform (`dotnet test --project &lt;csproj&gt;` or the built executable directly)
+* Update all other dependencies to their latest stable versions</PackageReleaseNotes>
   </PropertyGroup>
 </Project>
