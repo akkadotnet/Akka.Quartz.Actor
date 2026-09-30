@@ -26,12 +26,22 @@ jobs:
           packageType: 'sdk'
           useGlobalJson: true
           
+      - pwsh: |
+          $globalJsonPath = Join-Path $env:BUILD_SOURCESDIRECTORY 'global.json'
+          $sdkVersion = (Get-Content $globalJsonPath -Raw | ConvertFrom-Json).sdk.version
+          if (-not $sdkVersion) { throw "Could not read sdk.version from $globalJsonPath" }
+          $majorVersion = $sdkVersion.Split('.')[0]
+          $runtimeVersion = $majorVersion + '.x'
+          Write-Host "Resolved .NET runtime '$runtimeVersion' from global.json SDK version '$sdkVersion'"
+          Write-Host "##vso[task.setvariable variable=DotNetRuntimeVersion]$runtimeVersion"
+        displayName: 'Resolve .NET runtime version from global.json'
+
       - task: UseDotNet@2
-        displayName: "Use .NET 10 runtime"
+        displayName: 'Use .NET runtime from global.json'
         inputs:
           packageType: runtime
-          version: 10.x
-      
+          version: $(DotNetRuntimeVersion)
+
       - script: dotnet tool restore
         displayName: 'Restore dotnet tools'
 
@@ -48,7 +58,7 @@ jobs:
           Get-ChildItem `
             -Recurse `
             -File `
-            -Include '*.Tests.csproj' `
+            -Include '*Tests.csproj' `
             -Exclude '*examples*', '*benchmarks*' `
           | ForEach-Object { `
             dotnet test -c Release --no-build --project $_.FullName --results-directory TestResults -- --report-trx `
