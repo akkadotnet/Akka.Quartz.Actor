@@ -4,7 +4,7 @@
 * Drop support for .NET Standard and .NET Framework; target .NET 10 only
 * Breaking: `IJob.Execute` now returns `ValueTask` and takes a `CancellationToken`, matching Quartz 4.0's `IJob` interface
 * Replace `Quartz.Serialization.Json` with `Quartz.Serialization.Newtonsoft` (the former is now an empty shim package in Quartz 4.0)
-* **Action required for existing ADO job stores.** Quartz 4 validates its schema at startup and will not run against an un-migrated Quartz 3 database. Before starting 4.x, apply the [3.x-to-4.0 migration scripts](https://github.com/quartznet/quartznet/tree/main/database/migrations/4.0) for your database:
+* **Action required for existing ADO job stores.** Quartz 4 validates its schema at startup and will not run against an un-migrated Quartz 3 database. Before starting 4.x, apply the [3.x-to-4.0 migration scripts](https://github.com/quartznet/quartznet/tree/v4.0.1/database/migrations/4.0) for your database:
   1. `schema_30_to_40_upgrade_<db>.sql` — adds the columns and the `QRTZ_PAUSED_JOB_GRPS` table that 4.x requires. Safe to run while 3.x nodes are still up.
   2. `schema_30_to_40_indexes_<db>.sql` — aligns the index set. **Not** safe during a mixed 3.x/4.x window; run it only after the last 3.x node has shut down, because it drops the index 3.x drives its misfire sweep from.
 
