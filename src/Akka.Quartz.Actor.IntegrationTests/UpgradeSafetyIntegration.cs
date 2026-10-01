@@ -46,12 +46,20 @@ namespace Akka.Quartz.Actor.IntegrationTests
             {
                 await using var secondFactory = QuartzSchedulerBuilder.Create().UseProperties(properties).Build();
                 var scheduler = await secondFactory.GetScheduler(cancellationToken);
-                var delivery = new TaskCompletionSource<ScheduledEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
-                secondSystem.ActorOf(Props.Create(() => new Receiver(delivery)), "receiver");
-                var actor = secondSystem.ActorOf(Props.Create(() => new QuartzPersistentActor(scheduler)), "quartz");
-                await actor.Ask<ActorIdentity>(new Identify(null), TimeSpan.FromSeconds(5), cancellationToken);
-                await scheduler.Start(cancellationToken);
-                Assert.Equal(expected, await delivery.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken));
+                try
+                {
+                    var delivery = new TaskCompletionSource<ScheduledEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    secondSystem.ActorOf(Props.Create(() => new Receiver(delivery)), "receiver");
+                    var actor = secondSystem.ActorOf(Props.Create(() => new QuartzPersistentActor(scheduler)), "quartz");
+                    await actor.Ask<ActorIdentity>(new Identify(null), TimeSpan.FromSeconds(5), cancellationToken);
+                    await scheduler.Start(cancellationToken);
+                    Assert.Equal(expected, await delivery.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken));
+                }
+                finally
+                {
+                    // Receiving the actor message does not mean Quartz has finished persisting job completion.
+                    await scheduler.Shutdown(waitForJobsToComplete: true, cancellationToken: System.Threading.CancellationToken.None);
+                }
             }
             finally { await secondSystem.Terminate(); }
         }
@@ -79,7 +87,12 @@ namespace Akka.Quartz.Actor.IntegrationTests
                 await scheduler.Start(cancellationToken);
                 Assert.Equal("Hello from Quartz 3", await delivery.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken));
             }
-            finally { await system.Terminate(); }
+            finally
+            {
+                // Drain this caller-owned scheduler while the receivers are still available, before deleting the store.
+                try { await scheduler.Shutdown(waitForJobsToComplete: true, cancellationToken: System.Threading.CancellationToken.None); }
+                finally { await system.Terminate(); }
+            }
         }
 
         [Fact]
@@ -189,7 +202,12 @@ namespace Akka.Quartz.Actor.IntegrationTests
                 await scheduler.Start(cancellationToken);
                 Assert.Equal("Hello from Quartz 3", await delivery.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken));
             }
-            finally { await system.Terminate(); }
+            finally
+            {
+                // Drain this caller-owned scheduler while the receivers are still available, before deleting the store.
+                try { await scheduler.Shutdown(waitForJobsToComplete: true, cancellationToken: System.Threading.CancellationToken.None); }
+                finally { await system.Terminate(); }
+            }
         }
 
         private static Task<(int ExitCode, string Output)> RunHelper(string name, params string[] arguments) =>

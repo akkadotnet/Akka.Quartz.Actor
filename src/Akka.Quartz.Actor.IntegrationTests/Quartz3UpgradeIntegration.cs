@@ -20,7 +20,7 @@ namespace Akka.Quartz.Actor.IntegrationTests
 
             try
             {
-                var connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath }.ToString();
+                var connectionString = new SqliteConnectionStringBuilder { DataSource = databasePath, Pooling = false }.ToString();
                 await using (var connection = new SqliteConnection(connectionString))
                 {
                     await connection.OpenAsync(cancellationToken);
@@ -72,12 +72,12 @@ namespace Akka.Quartz.Actor.IntegrationTests
                 }
                 finally
                 {
-                    await actorSystem.Terminate();
+                    try { await scheduler.Shutdown(waitForJobsToComplete: true, cancellationToken: System.Threading.CancellationToken.None); }
+                    finally { await actorSystem.Terminate(); }
                 }
             }
             finally
             {
-                SqliteConnection.ClearAllPools();
                 File.Delete(databasePath);
             }
         }
