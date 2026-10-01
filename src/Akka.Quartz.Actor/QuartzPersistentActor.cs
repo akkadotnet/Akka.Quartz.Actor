@@ -29,15 +29,10 @@ namespace Akka.Quartz.Actor
 
         private void InstallActorSystem(IScheduler scheduler)
         {
-            if (!scheduler.Context.ContainsKey(QuartzPersistentJob.SysKey))
-            {
-                scheduler.Context.Add(QuartzPersistentJob.SysKey, Context.System);
-            }
-            else
-            {
-                scheduler.Context.Remove(QuartzPersistentJob.SysKey);
-                scheduler.Context.Add(QuartzPersistentJob.SysKey, Context.System);
-            }
+            // The post-start compatibility callback must not briefly remove context used by recovered jobs.
+            if (scheduler.Context.TryGetValue(QuartzPersistentJob.SysKey, out var existing)
+                && ReferenceEquals(existing, Context.System)) return;
+            scheduler.Context[QuartzPersistentJob.SysKey] = Context.System;
         }
 
         protected override bool Receive(object message)
