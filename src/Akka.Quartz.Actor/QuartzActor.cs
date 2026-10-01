@@ -27,7 +27,6 @@ namespace Akka.Quartz.Actor
         protected IScheduler Scheduler { get; private set; }
 
         private readonly bool _externallySupplied;
-        private StandaloneSchedulerFactory _schedulerFactory;
         private OwnedSchedulerShutdown.OwnedScheduler _ownedScheduler;
 
         public QuartzActor()
@@ -51,21 +50,13 @@ namespace Akka.Quartz.Actor
                 props.Set(PropertySchedulerInstanceName, Guid.NewGuid().ToString());
             }
 
-            _ownedScheduler = new OwnedSchedulerShutdownExtension().Apply(Context.System).Register();
+            _ownedScheduler = new OwnedSchedulerShutdownExtension().Apply(Context.System).Register(props);
             ActorTaskScheduler.RunTask(async () =>
             {
-                try
-                {
-                    _schedulerFactory = QuartzSchedulerBuilder.Create().UseProperties(props).Build();
-                    Scheduler = await _schedulerFactory.GetScheduler();
-                    PrepareScheduler(Scheduler);
-                    await Scheduler.Start();
-                    OnSchedulerCreated(Scheduler);
-                }
-                finally
-                {
-                    _ownedScheduler.Initialized(_schedulerFactory, Scheduler);
-                }
+                Scheduler = await _ownedScheduler.Scheduler;
+                PrepareScheduler(Scheduler);
+                await _ownedScheduler.StartAsync(Scheduler);
+                OnSchedulerCreated(Scheduler);
             });
         }
 

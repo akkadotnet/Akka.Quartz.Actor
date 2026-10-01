@@ -114,7 +114,7 @@ This snippet assumes `Akka.Actor` and `Quartz` imports and your existing receive
 
 ### Await scheduler shutdown before touching the store
 
-Stopping an actor initiates owned scheduler shutdown, but actor `Terminated` alone is not proof that plugins, jobs or the job store have stopped. With the default Akka coordinated shutdown enabled, `await system.Terminate()` also awaits actor-owned scheduler shutdown in `before-actor-system-terminate`, including running jobs. Configure that phase's timeout for your longest expected job/plugin shutdown, and investigate any timeout or failure before migrating. Disabling coordinated shutdown, recovering from its failures, or letting its phase timeout expire removes that assurance.
+Stopping an actor initiates owned scheduler shutdown, but actor `Terminated` alone is not proof that plugins, jobs or the job store have stopped. Initialization, startup and disposal are tracked independently of the actor mailbox, so stopping an actor during an asynchronous plugin operation still releases its scheduler after that operation finishes. With the default Akka coordinated shutdown enabled, `await system.Terminate()` also awaits actor-owned scheduler shutdown in `before-actor-system-terminate`, including running jobs. Configure that phase's timeout for your longest expected initialization/job/plugin shutdown, and investigate any timeout or failure before migrating. Disabling coordinated shutdown, recovering from its failures, or letting its phase timeout expire removes that assurance.
 
 For a strict migration boundary, use a caller-owned scheduler and explicitly await its shutdown while the ActorSystem and receivers are still available:
 

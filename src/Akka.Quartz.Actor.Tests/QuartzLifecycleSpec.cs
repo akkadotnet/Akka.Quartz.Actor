@@ -116,6 +116,82 @@ namespace Akka.Quartz.Actor.Tests
             }
         }
 
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Stop_During_Async_Initialization_Or_Startup_Should_Still_Dispose_The_Scheduler(bool blockStart)
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            ControlledStartupPlugin.Entered = new TaskCompletionSource<IScheduler>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ControlledStartupPlugin.Release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ControlledStartupPlugin.Stopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var system = ActorSystem.Create("quartz-startup-stop-test", ConfigurationFactory.ParseString(
+                "akka.coordinated-shutdown.phases.before-actor-system-terminate { timeout = 20s, recover = off }"));
+            Task termination = null;
+            try
+            {
+                var properties = new NameValueCollection
+                {
+                    ["quartz.plugin.waiting.type"] = typeof(ControlledStartupPlugin).AssemblyQualifiedName,
+                    ["quartz.plugin.waiting.blockStart"] = blockStart.ToString()
+                };
+                var actor = system.ActorOf(Props.Create(() => new QuartzActor(properties)));
+                var died = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                system.ActorOf(Props.Create(() => new TerminationObserver(actor, died)));
+                var scheduler = await ControlledStartupPlugin.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                system.Stop(actor);
+                await died.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                termination = system.Terminate();
+                Assert.False(termination.IsCompleted);
+                ControlledStartupPlugin.Release.TrySetResult(true);
+                await termination.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                Assert.True(ControlledStartupPlugin.Stopped.Task.IsCompletedSuccessfully);
+                Assert.Equal(SchedulerStatus.Shutdown, scheduler.Status);
+            }
+            finally
+            {
+                ControlledStartupPlugin.Release.TrySetResult(true);
+                await (termination ?? system.Terminate()).WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            }
+        }
+
+        private sealed class TerminationObserver : ReceiveActor
+        {
+            public TerminationObserver(IActorRef target, TaskCompletionSource<bool> died)
+            {
+                Context.Watch(target);
+                Receive<Terminated>(_ => died.TrySetResult(true));
+            }
+        }
+
+        public sealed class ControlledStartupPlugin : ISchedulerPlugin
+        {
+            public static TaskCompletionSource<IScheduler> Entered;
+            public static TaskCompletionSource<bool> Release;
+            public static TaskCompletionSource<bool> Stopped;
+            public bool BlockStart { get; set; }
+            private IScheduler _scheduler;
+            public async ValueTask Initialize(string name, IScheduler scheduler, CancellationToken cancellationToken)
+            {
+                _scheduler = scheduler;
+                if (!BlockStart) await BlockAsync();
+            }
+            public async ValueTask Start(CancellationToken cancellationToken)
+            {
+                if (BlockStart) await BlockAsync();
+            }
+            private async Task BlockAsync()
+            {
+                Entered.TrySetResult(_scheduler);
+                await Release.Task;
+            }
+            public ValueTask Shutdown(CancellationToken cancellationToken)
+            {
+                Stopped.TrySetResult(true);
+                return ValueTask.CompletedTask;
+            }
+        }
+
         [Fact]
         public async Task Supplied_Scheduler_Should_Remain_Usable_After_Actor_Stop()
         {
