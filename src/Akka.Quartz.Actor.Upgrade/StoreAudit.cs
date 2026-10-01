@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Data.Common;
 using System.Text.RegularExpressions;
 using Quartz;
@@ -85,7 +84,7 @@ public static class StoreAudit
                     {
                         "CALENDARS" => serializer.Deserialize<ICalendar>(bytes),
                         "BLOB_TRIGGERS" => serializer.Deserialize<IOperableTrigger>(bytes),
-                        _ => serializer.Deserialize<IDictionary>(bytes)
+                        _ => serializer.Deserialize<JobDataMap>(bytes)
                     };
                     if (recovered is null) issues.Add(new AuditIssue(location, "Nonempty JSON blob deserialized to null."));
                 }

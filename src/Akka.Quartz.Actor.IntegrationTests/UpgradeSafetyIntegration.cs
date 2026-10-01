@@ -195,6 +195,33 @@ namespace Akka.Quartz.Actor.IntegrationTests
         private static Task<(int ExitCode, string Output)> RunHelper(string name, params string[] arguments) =>
             QuartzUpgradeTests.HelperProcess.Run(name, arguments);
 
+        [Theory]
+        [InlineData("JOB_DETAILS")]
+        [InlineData("TRIGGERS")]
+        public async Task Audit_Should_Reject_Structured_Quartz3_Json_That_Quartz4_JobStore_Cannot_Read(string table)
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            await using var store = await Store.Create(migrate: false);
+            // Captured from the Quartz 3 JsonObjectSerializer, and read successfully by its real ADO job store.
+            const string legacy = "{\"$type\":\"System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib],[System.Object, System.Private.CoreLib]], System.Private.CoreLib\",\"structured\":{\"child\":{\"value\":1}}}";
+            var hex = Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(legacy));
+            await store.Execute($"UPDATE QRTZ_{table} SET JOB_DATA=x'{hex}'");
+            await using var connection = new SqliteConnection(store.ConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            var report = await StoreAudit.InspectAsync(connection, cancellationToken: cancellationToken);
+            Assert.Contains(table, Assert.Single(report.Issues).Location);
+            Assert.Contains("cannot read", report.Issues[0].Reason);
+            Assert.Equal(System.Text.Encoding.UTF8.GetBytes(legacy), (byte[])await Scalar(connection, $"SELECT JOB_DATA FROM QRTZ_{table}"));
+            await store.Execute(await File.ReadAllTextAsync(System.IO.Path.Combine(AppContext.BaseDirectory, "schema_30_to_40_upgrade_sqlite.sql"), cancellationToken));
+            await using var factory = QuartzSchedulerBuilder.Create().UseProperties(store.Properties()).Build();
+            var scheduler = await factory.GetScheduler(cancellationToken);
+            await Assert.ThrowsAsync<JobPersistenceException>(async () =>
+            {
+                if (table == "JOB_DETAILS") await scheduler.GetJobDetail(new JobKey("legacy-job"), cancellationToken);
+                else await scheduler.GetTrigger(new TriggerKey("legacy-trigger"), cancellationToken);
+            });
+        }
+
         private static async Task<object> Scalar(SqliteConnection connection, string sql)
         {
             await using var command = connection.CreateCommand();

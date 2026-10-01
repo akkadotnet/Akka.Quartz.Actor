@@ -45,7 +45,9 @@ Use an offline backup produced from a trusted application. BinaryFormatter deser
 dotnet quartz3-convert/Quartz3Migration.dll --database backup.db --trusted-backup --scheduler QuartzScheduler
 ```
 
-This validates and reports binary, JSON and empty blob counts without writing. Inspect failures before proceeding. Load required .NET 8-compatible application types with repeatable `--assembly /path/to/application.dll`; sibling dependencies are resolved from that directory. The helper converts job and trigger data dictionaries and supported calendars to Newtonsoft JSON. It preserves Akka message bytes, identities, fire times and other schedule columns. JSON can change the CLR numeric types of ordinary dictionary values; rehearse jobs that rely on exact boxed types.
+This validates and reports binary, JSON and empty blob counts without writing. Inspect failures before proceeding. Load required .NET 8-compatible application types with repeatable `--assembly /path/to/application.dll`; sibling dependencies are resolved from that directory. The helper converts plain `Dictionary<string, object>` and `Dictionary<object, object>` maps with string keys and default key comparison (ordinal comparison is also supported for string dictionaries). Values may contain only null, strings, booleans, integer values and byte arrays. It verifies every recovered value against its original, including Akka message bytes, before writing. JSON can change integer boxing (for example, `int` to `long`); rehearse jobs that rely on exact boxed types. Strings parsed as dates, floating-point values, nested objects, custom map types/comparers and arbitrary application objects are rejected rather than risking silent changes. Unsupported values need application-specific conversion while Quartz 3 is available; merely loading their assembly does not make them safe to convert.
+
+The converter supports Quartz's stock Base, Annual, Cron, Daily, Holiday, Monthly and Weekly calendars, including stock base chains, only when their scheduling settings survive the JSON round trip unchanged. It checks calendar types, exclusions/ranges/cron expressions, descriptions, time zones and their rules, and base chains. It also checks DailyCalendar's next-included-time precision, which can differ between Quartz 3's binary and JSON readers. Any mismatch requires application-specific migration. Custom calendar subclasses are rejected. The helper preserves identities, fire times and other schedule columns.
 
 Custom serializers, unsupported calendar types and **nonempty `QRTZ_BLOB_TRIGGERS`** need application-specific migration. The helper refuses them and rolls back the transaction instead of guessing a format. Loading an assembly does not install its serializer registrations.
 
@@ -65,7 +67,7 @@ Both helpers accept `--prefix QRTZ_`. `--scheduler` limits the selected rows and
 dotnet quartz4-audit/Akka.Quartz.Actor.Upgrade.dll --database production.db --scheduler QuartzScheduler
 ```
 
-The auditor opens the existing file read-only. It checks saved cron expressions using **Quartz 4.0.1**, host time zone availability, and Newtonsoft readability of serialized data and calendars. It flags remaining binary blobs and custom BLOB triggers. Missing tables or unreadable schema are failures, not a successful zero-row audit. Required application assemblies can be supplied with `--assembly`.
+The auditor opens the existing file read-only. It checks saved cron expressions using **Quartz 4.0.1**, host time zone availability, and Newtonsoft readability of serialized data and calendars. Job and trigger data are read as `JobDataMap`, matching the Quartz 4 ADO reader; a successful generic dictionary read is insufficient. It flags remaining binary blobs and custom BLOB triggers. Missing tables or unreadable schema are failures, not a successful zero-row audit. Required application assemblies can be supplied with `--assembly`.
 
 Both helpers exit **0** after a successful operation and **1** on an error; the auditor also exits 1 if it finds issues. Reports identify affected rows without printing message payloads. `--help` displays usage. A clean audit checks the formats above; it does not prove actor delivery, validate every job class or install custom serializer registrations.
 
@@ -108,7 +110,21 @@ await quartzActor.Ask<ActorIdentity>(new Identify(null), TimeSpan.FromSeconds(10
 await scheduler.Start(cancellationToken);
 ```
 
-This snippet assumes `Akka.Actor` and `Quartz` imports and your existing receiver/configuration. Keep actor paths and Akka serializer IDs/manifests compatible with saved messages. `OnSchedulerCreated` overrides now run before an actor-owned scheduler starts. Keep them independent of a running scheduler. When sharing a scheduler, use a single intended ActorSystem context for its persistent jobs.
+This snippet assumes `Akka.Actor` and `Quartz` imports and your existing receiver/configuration. Keep actor paths and Akka serializer IDs/manifests compatible with saved messages. Existing `OnSchedulerCreated` overrides still run after an actor-owned scheduler starts; persistent actor context is installed separately beforehand. Supplied schedulers retain their caller-controlled startup state when the callback runs. When sharing a scheduler, use a single intended ActorSystem context for its persistent jobs.
+
+### Await scheduler shutdown before touching the store
+
+Stopping an actor initiates owned scheduler shutdown, but actor `Terminated` alone is not proof that plugins, jobs or the job store have stopped. With the default Akka coordinated shutdown enabled, `await system.Terminate()` also awaits actor-owned scheduler shutdown in `before-actor-system-terminate`, including running jobs. Configure that phase's timeout for your longest expected job/plugin shutdown, and investigate any timeout or failure before migrating. Disabling coordinated shutdown, recovering from its failures, or letting its phase timeout expire removes that assurance.
+
+For a strict migration boundary, use a caller-owned scheduler and explicitly await its shutdown while the ActorSystem and receivers are still available:
+
+```csharp
+await scheduler.Shutdown(waitForJobsToComplete: true, cancellationToken);
+await factory.DisposeAsync();
+await system.Terminate();
+```
+
+Do not proceed if shutdown fails or is cancelled. Repeat the shutdown procedure for every node and every other application sharing the store before taking the final backup and applying conversion/DDL. Factory disposal alone does not request a graceful drain of running jobs.
 
 ## Cutover and rollback
 
@@ -120,7 +136,7 @@ Once new jobs or calendars have been written, application-only downgrade is unsa
 
 Local tests exercise actual SQL Server 2022 and PostgreSQL 17 containers using pinned upstream Quartz 3 schemas and Quartz 4 upgrade scripts, then verify natural actor delivery. They cover conversion dry-run/apply, rollback after a bad calendar, unchanged schedule times, idempotence and invalid cron detection on both engines. SQLite tests cover migration from real Quartz 3 persisted data, binary helper dry-run/apply acknowledgements, transactional rollback, scheduler scoping, unchanged schedule columns and message bytes, idempotence, actual Quartz 3 JSON reads, Quartz 4 calendar/trigger reads and natural actor delivery after conversion. They also cover a typed application message after a fresh scheduler/ActorSystem restart, an overdue one-shot's explicit FireNow policy, failed database writes, startup ordering and scheduler ownership.
 
-Database engines other than SQL Server, PostgreSQL and SQLite, custom serializers/calendars/BLOB triggers, distributed clustered cutovers and every misfire policy remain application-specific validation work. CI must discover all test projects, fail on each native exit code and require fresh reports with executed tests. The database test project requires Docker running Linux containers. Linux CI runs it; Windows hosted CI runs the remaining projects. Run the complete checks locally on a Docker-capable host with:
+Database engines other than SQL Server, PostgreSQL and SQLite, custom serializers/calendars/BLOB triggers, distributed clustered cutovers and every misfire policy remain application-specific validation work. CI must discover all test projects, fail on each native exit code and require fresh reports with executed tests. The database test project requires Docker running Linux containers. Linux CI runs it; Windows hosted CI runs the remaining projects. Tagged releases also run the complete Linux validation job on that tag's revision, and publishing depends on its success. Run the complete checks locally on a Docker-capable host with:
 
 ```powershell
 dotnet build -c Release

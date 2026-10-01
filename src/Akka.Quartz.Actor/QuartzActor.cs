@@ -28,6 +28,7 @@ namespace Akka.Quartz.Actor
 
         private readonly bool _externallySupplied;
         private StandaloneSchedulerFactory _schedulerFactory;
+        private OwnedSchedulerShutdown.OwnedScheduler _ownedScheduler;
 
         public QuartzActor()
         {
@@ -50,22 +51,33 @@ namespace Akka.Quartz.Actor
                 props.Set(PropertySchedulerInstanceName, Guid.NewGuid().ToString());
             }
 
+            _ownedScheduler = new OwnedSchedulerShutdownExtension().Apply(Context.System).Register();
             ActorTaskScheduler.RunTask(async () =>
             {
-                _schedulerFactory = QuartzSchedulerBuilder.Create().UseProperties(props).Build();
-                Scheduler = await _schedulerFactory.GetScheduler();
-
-                OnSchedulerCreated(Scheduler);
-                await Scheduler.Start();
+                try
+                {
+                    _schedulerFactory = QuartzSchedulerBuilder.Create().UseProperties(props).Build();
+                    Scheduler = await _schedulerFactory.GetScheduler();
+                    PrepareScheduler(Scheduler);
+                    await Scheduler.Start();
+                    OnSchedulerCreated(Scheduler);
+                }
+                finally
+                {
+                    _ownedScheduler.Initialized(_schedulerFactory, Scheduler);
+                }
             });
         }
 
         protected virtual void OnSchedulerCreated(IScheduler scheduler) { }
 
+        internal virtual void PrepareScheduler(IScheduler scheduler) { }
+
         public QuartzActor(IScheduler scheduler)
         {
             Scheduler = scheduler;
             _externallySupplied = true;
+            PrepareScheduler(Scheduler);
             OnSchedulerCreated(Scheduler);
         }
 
@@ -89,19 +101,16 @@ namespace Akka.Quartz.Actor
             if (!_externallySupplied)
             {
                 // PostStop cannot resume work through an actor mailbox that is being terminated.
-                _ = ShutdownSchedulerAsync(_schedulerFactory, Scheduler, Context.GetLogger());
+                _ = ShutdownSchedulerAsync(_ownedScheduler, Context.GetLogger());
             }
             base.PostStop();
         }
 
-        private static async Task ShutdownSchedulerAsync(StandaloneSchedulerFactory factory, IScheduler scheduler, ILoggingAdapter log)
+        private static async Task ShutdownSchedulerAsync(OwnedSchedulerShutdown.OwnedScheduler owned, ILoggingAdapter log)
         {
             try
             {
-                if (factory != null)
-                    await factory.DisposeAsync().ConfigureAwait(false);
-                else if (scheduler != null)
-                    await scheduler.Shutdown().ConfigureAwait(false);
+                if (owned != null) await owned.StopAsync().ConfigureAwait(false);
             }
             catch (Exception exception)
             {

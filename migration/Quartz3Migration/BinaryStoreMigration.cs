@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using System.Text.RegularExpressions;
 using Quartz;
+using Quartz.Impl.Calendar;
 using Quartz.Simpl;
 using Quartz.Spi;
 
@@ -112,11 +113,109 @@ public static class BinaryStoreMigration
         var value = (isBinary ? binary.DeSerialize<T>(original) : json.DeSerialize<T>(original))
             ?? throw new InvalidDataException("A nonempty blob deserialized to null.");
         if (!isBinary) return original;
+        ValidateSupportedValue(value);
         var result = json.Serialize(value);
         var recovered = json.DeSerialize<T>(result) ?? throw new InvalidDataException("JSON round trip returned null.");
-        if (!result.AsSpan().SequenceEqual(json.Serialize(recovered)))
-            throw new InvalidDataException("JSON round trip changed the serialized value.");
+        if (value is IDictionary map && recovered is IDictionary recoveredMap)
+            VerifyMap(map, recoveredMap);
+        else if (value is not ICalendar calendar || recovered is not ICalendar recoveredCalendar
+            || !SameCalendar(calendar, recoveredCalendar))
+            throw new InvalidDataException("Calendar state changed during JSON conversion; use an application-specific migration.");
         return result;
+    }
+
+    private static void ValidateSupportedValue(object value)
+    {
+        if (value is IDictionary map)
+        {
+            var supportedMap = value.GetType() == typeof(Dictionary<string, object>)
+                && value is Dictionary<string, object> strings
+                && (strings.Comparer.GetType() == EqualityComparer<string>.Default.GetType()
+                    || strings.Comparer.GetType() == StringComparer.Ordinal.GetType())
+                || value.GetType() == typeof(Dictionary<object, object>)
+                && value is Dictionary<object, object> objects
+                && objects.Comparer.GetType() == EqualityComparer<object>.Default.GetType();
+            if (!supportedMap)
+                throw new InvalidDataException("Custom map types or key comparers require application-specific migration.");
+            foreach (DictionaryEntry entry in map)
+            {
+                if (entry.Key is not string || !IsSupportedScalar(entry.Value))
+                    throw new InvalidDataException("Only string-keyed maps containing null, strings, booleans, integer values and byte arrays can be converted automatically. Other values require application-specific migration.");
+            }
+            return;
+        }
+        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        for (var calendar = value as ICalendar; calendar is not null; calendar = calendar.CalendarBase)
+        {
+            if (!visited.Add(calendar)) throw new InvalidDataException("Calendar base chain contains a cycle.");
+            var type = calendar.GetType();
+            if (type != typeof(BaseCalendar) && type != typeof(AnnualCalendar) && type != typeof(CronCalendar)
+                && type != typeof(DailyCalendar) && type != typeof(HolidayCalendar)
+                && type != typeof(MonthlyCalendar) && type != typeof(WeeklyCalendar))
+                throw new InvalidDataException("Custom calendar types require application-specific migration.");
+        }
+    }
+
+    private static bool IsInteger(object? value) => value is sbyte or byte or short or ushort or int or uint or long or ulong;
+
+    private static bool SameCalendar(ICalendar? original, ICalendar? recovered)
+    {
+        if (original is null || recovered is null) return original is null && recovered is null;
+        if (original.GetType() != recovered.GetType() || original.Description != recovered.Description
+            || original is not BaseCalendar left || recovered is not BaseCalendar right
+            || !SameTimeZone(left.TimeZone, right.TimeZone)
+            || !SameCalendar(original.CalendarBase, recovered.CalendarBase)) return false;
+
+        // Stock calendars only: compare their full scheduling settings, not serialization bookkeeping.
+        var anchor = new DateTimeOffset(2000, 1, 15, 12, 0, 0, TimeSpan.Zero);
+        return (left, right) switch
+        {
+            (AnnualCalendar a, AnnualCalendar b) => a.DaysExcluded.OrderBy(date => date).SequenceEqual(b.DaysExcluded.OrderBy(date => date)),
+            (HolidayCalendar a, HolidayCalendar b) => a.ExcludedDates.OrderBy(date => date).SequenceEqual(b.ExcludedDates.OrderBy(date => date)),
+            (MonthlyCalendar a, MonthlyCalendar b) => a.DaysExcluded.SequenceEqual(b.DaysExcluded),
+            (WeeklyCalendar a, WeeklyCalendar b) => a.DaysExcluded.SequenceEqual(b.DaysExcluded),
+            (CronCalendar a, CronCalendar b) => a.CronExpression.CronExpressionString == b.CronExpression.CronExpressionString
+                && SameTimeZone(a.CronExpression.TimeZone, b.CronExpression.TimeZone),
+            (DailyCalendar a, DailyCalendar b) => a.InvertTimeRange == b.InvertTimeRange
+                && a.GetTimeRangeStartingTimeUtc(anchor) == b.GetTimeRangeStartingTimeUtc(anchor)
+                && a.GetTimeRangeEndingTimeUtc(anchor) == b.GetTimeRangeEndingTimeUtc(anchor)
+                && DailyPrecision(a) == DailyPrecision(b),
+            _ => left.GetType() == typeof(BaseCalendar)
+        };
+    }
+
+    private static bool SameTimeZone(TimeZoneInfo original, TimeZoneInfo recovered) =>
+        original.Id == recovered.Id && original.HasSameRules(recovered);
+
+    private static int DailyPrecision(DailyCalendar calendar)
+    {
+        // Quartz 3.14's binary constructor and JSON constructor can choose different next-included-time steps.
+        // This private setting has no public getter. Fail closed if the pinned implementation changes.
+        var field = typeof(DailyCalendar).GetField("precisionStepMillis",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        return field?.GetValue(calendar) is int precision ? precision
+            : throw new InvalidDataException("Cannot verify DailyCalendar precision; use application-specific migration.");
+    }
+
+    private static bool IsSupportedScalar(object? value) => value is null or string or bool or byte[] || IsInteger(value);
+
+    private static void VerifyMap(IDictionary original, IDictionary recovered)
+    {
+        if (original.Count != recovered.Count)
+            throw new InvalidDataException("JSON conversion changed the map's entries.");
+        foreach (DictionaryEntry entry in original)
+        {
+            if (!recovered.Contains(entry.Key)) throw new InvalidDataException("JSON conversion removed a map entry.");
+            var actual = recovered[entry.Key];
+            var matches = entry.Value switch
+            {
+                byte[] bytes => actual is byte[] recoveredBytes && bytes.AsSpan().SequenceEqual(recoveredBytes),
+                null => actual is null,
+                _ when IsInteger(entry.Value) => IsInteger(actual) && Convert.ToDecimal(entry.Value) == Convert.ToDecimal(actual),
+                _ => entry.Value.GetType() == actual?.GetType() && entry.Value.Equals(actual)
+            };
+            if (!matches) throw new InvalidDataException("JSON conversion changed a map value; use an application-specific migration.");
+        }
     }
 
     private static void AddParameter(DbCommand command, string name, object value, DbType? type = null)

@@ -23,7 +23,11 @@ namespace Akka.Quartz.Actor
             : base(scheduler)
         { }
 
-        protected override void OnSchedulerCreated(IScheduler scheduler)
+        internal override void PrepareScheduler(IScheduler scheduler) => InstallActorSystem(scheduler);
+
+        protected override void OnSchedulerCreated(IScheduler scheduler) => InstallActorSystem(scheduler);
+
+        private void InstallActorSystem(IScheduler scheduler)
         {
             if (!scheduler.Context.ContainsKey(QuartzPersistentJob.SysKey))
             {

@@ -17,7 +17,14 @@ variables:
     value: akkadotnet/Akka.Quartz.Actor
 
 jobs:
+  - template: azure-pipeline.template.yaml
+    parameters:
+      name: ReleaseValidation
+      displayName: 'Validate tagged revision including SQL Server and PostgreSQL migrations'
+      vmImage: ubuntu-latest
+
   - job: Release
+    dependsOn: ReleaseValidation
     pool:
       vmImage: windows-2022
       demands: Cmd

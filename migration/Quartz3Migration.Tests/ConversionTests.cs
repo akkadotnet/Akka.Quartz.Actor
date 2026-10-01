@@ -117,6 +117,116 @@ public sealed class ConversionTests
         Assert.Empty(await store.Blob("TRIGGERS", "JOB_DATA"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Private_Object_State_Should_Be_Rejected_Without_Committing_Earlier_Rows(bool apply)
+    {
+        await using var store = await Fixture.Create();
+        var before = await store.Blob("JOB_DETAILS", "JOB_DATA");
+        var binary = new BinaryObjectSerializer();
+        binary.Initialize();
+        var state = new PrivateState("important persisted value");
+        Assert.Equal("important persisted value", state.Read());
+        var unsupported = binary.Serialize(new Dictionary<string, object> { ["custom"] = state });
+        await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", unsupported);
+        await Assert.ThrowsAsync<InvalidDataException>(() => BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", apply, TestContext.Current.CancellationToken));
+        Assert.Equal(before, await store.Blob("JOB_DETAILS", "JOB_DATA"));
+        Assert.Equal(unsupported, await store.Blob("TRIGGERS", "JOB_DATA"));
+    }
+
+    [Fact]
+    public async Task Timestamp_String_Type_Change_Should_Be_Rejected_And_Rolled_Back()
+    {
+        await using var store = await Fixture.Create();
+        var before = await store.Blob("JOB_DETAILS", "JOB_DATA");
+        var binary = new BinaryObjectSerializer();
+        binary.Initialize();
+        var original = binary.Serialize(new Dictionary<string, object> { ["text"] = "2026-09-30T00:00:00+00:00" });
+        await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", original);
+        await Assert.ThrowsAsync<InvalidDataException>(() => BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken));
+        Assert.Equal(before, await store.Blob("JOB_DETAILS", "JOB_DATA"));
+        Assert.Equal(original, await store.Blob("TRIGGERS", "JOB_DATA"));
+    }
+
+    [Fact]
+    public async Task Custom_Map_Comparer_Should_Be_Rejected_Without_Writing()
+    {
+        await using var store = await Fixture.Create();
+        var binary = new BinaryObjectSerializer();
+        binary.Initialize();
+        var original = binary.Serialize(new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) { ["name"] = "value" });
+        await store.WriteBlob("UPDATE QRTZ_JOB_DETAILS SET JOB_DATA=@blob", original);
+        await Assert.ThrowsAsync<InvalidDataException>(() => BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken));
+        Assert.Equal(original, await store.Blob("JOB_DETAILS", "JOB_DATA"));
+    }
+
+    [Serializable]
+    public sealed class PrivateState
+    {
+        private readonly string _value;
+        public PrivateState(string value) => _value = value;
+        public string Read() => _value;
+    }
+
+    [Fact]
+    public async Task Nonempty_Holiday_Calendar_Should_Preserve_Its_Exclusions()
+    {
+        await using var store = await Fixture.Create();
+        var excluded = new DateTimeOffset(2030, 7, 15, 12, 0, 0, TimeSpan.Zero);
+        var calendar = new HolidayCalendar { TimeZone = TimeZoneInfo.Utc, Description = "holiday exclusion" };
+        calendar.AddExcludedDate(excluded.UtcDateTime);
+        var binary = new BinaryObjectSerializer();
+        binary.Initialize();
+        await store.WriteBlob("UPDATE QRTZ_CALENDARS SET CALENDAR=@blob", binary.Serialize(calendar));
+        await BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken);
+        var json = new JsonObjectSerializer();
+        json.Initialize();
+        var recovered = Assert.IsType<HolidayCalendar>(json.DeSerialize<ICalendar>(await store.Blob("CALENDARS", "CALENDAR")));
+        Assert.False(recovered.IsTimeIncluded(excluded));
+        Assert.True(recovered.IsTimeIncluded(excluded.AddDays(1)));
+        Assert.Equal(calendar.Description, recovered.Description);
+        Assert.Equal(calendar.TimeZone.Id, recovered.TimeZone.Id);
+    }
+
+    [Fact]
+    public async Task Supported_Map_Values_Should_Preserve_Content()
+    {
+        await using var store = await Fixture.Create();
+        var binary = new BinaryObjectSerializer();
+        binary.Initialize();
+        await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", binary.Serialize(new Dictionary<string, object>
+        {
+            ["null"] = null!, ["text"] = "plain text", ["bool"] = true,
+            ["integer"] = long.MinValue, ["bytes"] = new byte[] { 0, 128, 255 }
+        }));
+        await BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken);
+        var json = new JsonObjectSerializer();
+        json.Initialize();
+        var recovered = json.DeSerialize<IDictionary>(await store.Blob("TRIGGERS", "JOB_DATA"))!;
+        Assert.Equal(5, recovered.Count);
+        Assert.Null(recovered["null"]);
+        Assert.Equal("plain text", recovered["text"]);
+        Assert.Equal(true, recovered["bool"]);
+        Assert.Equal(long.MinValue, recovered["integer"]);
+        Assert.Equal(new byte[] { 0, 128, 255 }, Assert.IsType<byte[]>(recovered["bytes"]));
+    }
+
+    [Fact]
+    public async Task Daily_Calendar_Precision_Change_Should_Be_Rejected_And_Rolled_Back()
+    {
+        await using var store = await Fixture.Create();
+        var original = await store.Blob("JOB_DETAILS", "JOB_DATA");
+        var binary = new BinaryObjectSerializer();
+        binary.Initialize();
+        var calendar = new DailyCalendar("09:00", "17:00") { TimeZone = TimeZoneInfo.Utc };
+        var saved = binary.Serialize(calendar);
+        await store.WriteBlob("UPDATE QRTZ_CALENDARS SET CALENDAR=@blob", saved);
+        await Assert.ThrowsAsync<InvalidDataException>(() => BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken));
+        Assert.Equal(original, await store.Blob("JOB_DETAILS", "JOB_DATA"));
+        Assert.Equal(saved, await store.Blob("CALENDARS", "CALENDAR"));
+    }
+
     public sealed class NoopJob : IJob
     {
         public Task Execute(IJobExecutionContext context) => Task.CompletedTask;
