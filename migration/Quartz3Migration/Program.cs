@@ -1,5 +1,3 @@
-using System.Reflection;
-using System.Runtime.Loader;
 using System.Text.Json;
 using QuartzUpgradeTools;
 using Quartz3Migration;
@@ -42,16 +40,7 @@ try
     }
     if (!trusted) throw new ArgumentException("Binary deserialization executes application types. Use only a trusted database backup and pass --trusted-backup.");
     if (apply && !stopped) throw new ArgumentException("Stop all schedulers and pass --schedulers-stopped before applying conversion.");
-    foreach (var path in assemblies)
-    {
-        var directory = Path.GetDirectoryName(path)!;
-        AssemblyLoadContext.Default.Resolving += (_, name) =>
-        {
-            var dependency = Path.Combine(directory, name.Name + ".dll");
-            return File.Exists(dependency) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(dependency) : null;
-        };
-        AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
-    }
+    foreach (var path in assemblies) StoreSchema.LoadApplicationAssembly(path);
     await using var connection = StoreConnection.Create(provider, database, connectionStringEnvironment, readOnly: !apply);
     await connection.OpenAsync();
     var report = await BinaryStoreMigration.ConvertAsync(connection, prefix, scheduler, apply);

@@ -95,10 +95,12 @@ public sealed class DatabaseUpgradeTests
         Assert.Equal(0, (await Audit()).ExitCode);
 
         await Execute(connection, "INSERT INTO QRTZ_TRIGGERS SELECT SCHED_NAME,'bad',TRIGGER_GROUP,JOB_NAME,JOB_GROUP,DESCRIPTION,NEXT_FIRE_TIME,PREV_FIRE_TIME,PRIORITY,TRIGGER_STATE,'CRON',START_TIME,END_TIME,CALENDAR_NAME,MISFIRE_INSTR,NULL FROM QRTZ_TRIGGERS WHERE TRIGGER_NAME='legacy-trigger'");
-        await Execute(connection, "INSERT INTO QRTZ_CRON_TRIGGERS VALUES ('QuartzScheduler','bad','DEFAULT','0 0 9 ? * MON/2','UTC')");
+        await Execute(connection, "INSERT INTO QRTZ_CRON_TRIGGERS VALUES ('QuartzScheduler','bad','DEFAULT','0 0 9 ? * MON/2','Mars/Olympus_Mons')");
         var invalidCron = await Audit();
         Assert.Equal(1, invalidCron.ExitCode);
         Assert.Contains("MON/2", invalidCron.Output);
+        // The rejected cron expression must not stop the audit from checking the same row's time zone.
+        Assert.Contains("cannot resolve this time zone", invalidCron.Output);
         Assert.Equal("0 0 9 ? * MON/2", await Scalar(connection, "SELECT CRON_EXPRESSION FROM QRTZ_CRON_TRIGGERS"));
         await Execute(connection, "DELETE FROM QRTZ_CRON_TRIGGERS WHERE TRIGGER_NAME='bad'; DELETE FROM QRTZ_TRIGGERS WHERE TRIGGER_NAME='bad'");
         await ExecuteScript(provider, connection, await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "fixtures", $"upgrade_{provider}.sql"), cancellationToken));

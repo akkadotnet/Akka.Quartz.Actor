@@ -1,4 +1,3 @@
-using System.Runtime.Loader;
 using System.Text.Json;
 using Akka.Quartz.Actor.Upgrade;
 using QuartzUpgradeTools;
@@ -26,16 +25,7 @@ try
             case "--connection-string-env": connectionStringEnvironment = Value(); break;
             case "--scheduler": scheduler = Value(); break;
             case "--prefix": prefix = Value(); break;
-            case "--assembly":
-                var path = Path.GetFullPath(Value());
-                var directory = Path.GetDirectoryName(path)!;
-                AssemblyLoadContext.Default.Resolving += (_, name) =>
-                {
-                    var dependency = Path.Combine(directory, name.Name + ".dll");
-                    return File.Exists(dependency) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(dependency) : null;
-                };
-                AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
-                break;
+            case "--assembly": StoreSchema.LoadApplicationAssembly(Value()); break;
             default: throw new ArgumentException("Unknown option. Use --help.");
         }
     }

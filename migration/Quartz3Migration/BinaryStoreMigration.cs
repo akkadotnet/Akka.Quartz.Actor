@@ -1,11 +1,11 @@
 using System.Collections;
 using System.Data;
 using System.Data.Common;
-using System.Text.RegularExpressions;
 using Quartz;
 using Quartz.Impl.Calendar;
 using Quartz.Simpl;
 using Quartz.Spi;
+using QuartzUpgradeTools;
 
 namespace Quartz3Migration;
 
@@ -17,8 +17,7 @@ public static class BinaryStoreMigration
     public static async Task<ConversionReport> ConvertAsync(DbConnection connection, string prefix,
         string? scheduler, bool apply, CancellationToken cancellationToken = default)
     {
-        if (!Regex.IsMatch(prefix, "^[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)?$"))
-            throw new ArgumentException("Table prefix must be an identifier, optionally qualified by one schema.", nameof(prefix));
+        StoreSchema.ValidatePrefix(prefix);
 
         var binary = new BinaryObjectSerializer();
         binary.Initialize();
@@ -30,21 +29,8 @@ public static class BinaryStoreMigration
         // Offline operation is required. The transaction also prevents a failed conversion from partially committing.
         await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         if (scheduler is not null)
-        {
-            await using var scope = connection.CreateCommand();
-            scope.Transaction = transaction;
-            scope.CommandText = $"SELECT COUNT(*) FROM (SELECT SCHED_NAME FROM {prefix}JOB_DETAILS UNION ALL SELECT SCHED_NAME FROM {prefix}TRIGGERS UNION ALL SELECT SCHED_NAME FROM {prefix}CALENDARS) AS scoped WHERE SCHED_NAME = @scheduler";
-            AddParameter(scope, "@scheduler", scheduler);
-            if (Convert.ToInt64(await scope.ExecuteScalarAsync(cancellationToken)) == 0)
-                throw new ArgumentException("No stored rows match --scheduler. Verify the scheduler name; no conversion was performed.");
-        }
-        foreach (var (suffix, column, keys) in new[]
-        {
-            ("JOB_DETAILS", "JOB_DATA", new[] { "JOB_NAME", "JOB_GROUP" }),
-            ("TRIGGERS", "JOB_DATA", new[] { "TRIGGER_NAME", "TRIGGER_GROUP" }),
-            ("CALENDARS", "CALENDAR", new[] { "CALENDAR_NAME" }),
-            ("BLOB_TRIGGERS", "BLOB_DATA", new[] { "TRIGGER_NAME", "TRIGGER_GROUP" })
-        })
+            await StoreSchema.EnsureSchedulerHasRowsAsync(connection, transaction, prefix, scheduler, "no conversion was performed.", cancellationToken);
+        foreach (var (suffix, column, keys) in StoreSchema.SerializedColumns)
         {
             var table = prefix + suffix;
             await using var select = connection.CreateCommand();

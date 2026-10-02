@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../migration/shared/StoreConnection.cs" Link="StoreConnection.cs" />
+    <Compile Include="../../migration/shared/StoreSchema.cs" Link="StoreSchema.cs" />
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Npgsql" />
