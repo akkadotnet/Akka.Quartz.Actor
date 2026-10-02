@@ -14,8 +14,27 @@ namespace Akka.Quartz.Actor
     /// </summary>
     public class QuartzPersistentActor : QuartzActor
     {
+        /// <summary>
+        /// Creates an actor-owned scheduler with Quartz's default in-memory job store; nothing it schedules
+        /// survives a process restart.
+        /// </summary>
+        /// <remarks>
+        /// Quartz 3 returned an existing scheduler registered under the same name, so this constructor could
+        /// attach to a persistent scheduler configured elsewhere in the process. Quartz 4 removed that registry.
+        /// </remarks>
+        [Obsolete("Quartz 4 no longer looks schedulers up by name: this always creates a new in-memory (RAMJobStore) scheduler. " +
+                  "Pass the job store configuration to QuartzPersistentActor(NameValueCollection), or supply a scheduler with QuartzPersistentActor(IScheduler).")]
         public QuartzPersistentActor(string schedulerName)
-            : base(new NameValueCollection() { [PropertySchedulerInstanceName] = schedulerName })
+            : this(new NameValueCollection() { [PropertySchedulerInstanceName] = schedulerName })
+        {
+        }
+
+        /// <summary>
+        /// Creates and owns a scheduler from Quartz properties, including the job store configuration
+        /// required for jobs to survive a restart.
+        /// </summary>
+        public QuartzPersistentActor(NameValueCollection props)
+            : base(props)
         {
         }
 
