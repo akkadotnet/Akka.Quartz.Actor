@@ -30,7 +30,14 @@ namespace Akka.Quartz.Actor
             lock (_gate)
             {
                 if (_stopping) throw new InvalidOperationException("Cannot create an owned Quartz scheduler during coordinated shutdown.");
-                var owned = new OwnedScheduler(this, QuartzSchedulerBuilder.Create().UseProperties(properties).Build());
+                var instanceName = properties.Get(QuartzActor.PropertySchedulerInstanceName);
+                // A restarted actor reuses its instance name and job store. Starting before the previous
+                // incarnation has drained would let two schedulers recover and acquire the same triggers.
+                var predecessors = _owned
+                    .Where(other => other.IsStopping && string.Equals(other.InstanceName, instanceName, StringComparison.Ordinal))
+                    .Select(other => other.Completion)
+                    .ToArray();
+                var owned = new OwnedScheduler(this, instanceName, QuartzSchedulerBuilder.Create().UseProperties(properties).Build(), predecessors);
                 _owned.Add(owned);
                 return owned;
             }
@@ -56,14 +63,30 @@ namespace Akka.Quartz.Actor
             private Task _startup = Task.CompletedTask;
             private bool _stopping;
             private readonly Lazy<Task> _shutdown;
+            private readonly TaskCompletionSource<Done> _completion = new TaskCompletionSource<Done>(TaskCreationOptions.RunContinuationsAsynchronously);
             public Task<IScheduler> Scheduler { get; }
+            public string InstanceName { get; }
 
-            public OwnedScheduler(OwnedSchedulerShutdown owner, StandaloneSchedulerFactory factory)
+            /// <summary>Completes, successfully or not, once this scheduler has released its job store.</summary>
+            public Task Completion => _completion.Task;
+
+            public bool IsStopping
+            {
+                get { lock (_gate) return _stopping; }
+            }
+
+            public OwnedScheduler(OwnedSchedulerShutdown owner, string instanceName, StandaloneSchedulerFactory factory, Task[] predecessors)
             {
                 _owner = owner;
+                InstanceName = instanceName;
                 _factory = factory;
                 // Quartz/plugins must finish independently of ActorTaskScheduler, whose mailbox can stop first.
-                Scheduler = Task.Run(async () => await factory.GetScheduler().ConfigureAwait(false));
+                Scheduler = Task.Run(async () =>
+                {
+                    // Completion never faults: a failed predecessor shutdown is reported by whoever stopped it.
+                    await Task.WhenAll(predecessors).ConfigureAwait(false);
+                    return await factory.GetScheduler().ConfigureAwait(false);
+                });
                 _shutdown = new Lazy<Task>(() => Task.Run(DisposeAsync));
             }
 
@@ -99,13 +122,21 @@ namespace Akka.Quartz.Actor
                 }
                 try
                 {
-                    if (scheduler != null) await scheduler.Shutdown(waitForJobsToComplete: true).ConfigureAwait(false);
+                    try
+                    {
+                        if (scheduler != null) await scheduler.Shutdown(waitForJobsToComplete: true).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        await _factory.DisposeAsync().ConfigureAwait(false);
+                    }
                 }
                 finally
                 {
-                    await _factory.DisposeAsync().ConfigureAwait(false);
+                    // A failed shutdown must not keep this entry alive for the rest of the ActorSystem's life.
+                    lock (_owner._gate) _owner._owned.Remove(this);
+                    _completion.TrySetResult(Done.Instance);
                 }
-                lock (_owner._gate) _owner._owned.Remove(this);
             }
         }
     }

@@ -93,7 +93,8 @@ namespace Akka.Quartz.Actor.Tests
         private sealed record PersistentSchedulerCreated(IScheduler Scheduler, object System);
         private sealed class InspectingPersistentActor : QuartzPersistentActor
         {
-            public InspectingPersistentActor(string name) : base(name) { }
+            public InspectingPersistentActor(string name)
+                : base(new NameValueCollection { [PropertySchedulerInstanceName] = name }) { }
             protected override void OnSchedulerCreated(IScheduler scheduler) =>
                 Context.System.EventStream.Publish(new PersistentSchedulerCreated(scheduler, scheduler.Context[QuartzPersistentJob.SysKey]));
         }
@@ -189,6 +190,148 @@ namespace Akka.Quartz.Actor.Tests
             {
                 Stopped.TrySetResult(true);
                 return ValueTask.CompletedTask;
+            }
+        }
+
+        [Fact]
+        public async Task Restarted_Actor_Should_Not_Create_A_Scheduler_Until_The_Previous_Incarnation_Has_Shut_Down()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            DrainingPlugin.Reset();
+            var properties = new NameValueCollection
+            {
+                [QuartzActor.PropertySchedulerInstanceName] = "restart-" + Guid.NewGuid(),
+                ["quartz.plugin.draining.type"] = typeof(DrainingPlugin).AssemblyQualifiedName
+            };
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCreated));
+            var actor = Sys.ActorOf(Props.Create(() => new CrashingQuartzActor(properties)));
+            Watch(actor);
+            var first = ExpectMsg<SchedulerCreated>(cancellationToken: cancellationToken);
+            try
+            {
+                actor.Tell(CrashingQuartzActor.Crash);
+                var draining = await DrainingPlugin.ShutdownEntered.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                Assert.Same(first.Scheduler, draining);
+
+                // Same instance name and job store: a second scheduler must not exist while the first still runs jobs.
+                ExpectNoMsg(TimeSpan.FromSeconds(1), cancellationToken);
+                Assert.Equal(1, DrainingPlugin.InitializedCount);
+
+                DrainingPlugin.Release.TrySetResult(true);
+                var second = ExpectMsg<SchedulerCreated>(cancellationToken: cancellationToken);
+                Assert.NotSame(first.Scheduler, second.Scheduler);
+                Assert.Equal(SchedulerStatus.Shutdown, first.Scheduler.Status);
+                Assert.Equal(2, DrainingPlugin.InitializedCount);
+            }
+            finally
+            {
+                DrainingPlugin.Release.TrySetResult(true);
+                Sys.Stop(actor);
+                ExpectTerminated(actor, cancellationToken: cancellationToken);
+            }
+        }
+
+        [Fact]
+        public async Task Failed_Owned_Scheduler_Shutdown_Should_Not_Block_A_Restart_Or_Fail_Coordinated_Shutdown()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            ThrowingShutdownPlugin.Reset();
+            var system = ActorSystem.Create("quartz-failed-shutdown-test", ConfigurationFactory.ParseString(
+                "akka.coordinated-shutdown.phases.before-actor-system-terminate { timeout = 10s, recover = off }"));
+            Task termination = null;
+            try
+            {
+                var properties = new NameValueCollection
+                {
+                    [QuartzActor.PropertySchedulerInstanceName] = "failed-shutdown-" + Guid.NewGuid(),
+                    ["quartz.plugin.throwing.type"] = typeof(ThrowingShutdownPlugin).AssemblyQualifiedName
+                };
+                var probe = CreateTestProbe(system);
+                system.EventStream.Subscribe(probe, typeof(SchedulerCreated));
+                var actor = system.ActorOf(Props.Create(() => new CrashingQuartzActor(properties)));
+                var first = probe.ExpectMsg<SchedulerCreated>(cancellationToken: cancellationToken);
+
+                actor.Tell(CrashingQuartzActor.Crash);
+                // The restarted incarnation waits for the failed shutdown, so its arrival proves that the failed
+                // entry has been released rather than left registered for coordinated shutdown to await again.
+                var second = probe.ExpectMsg<SchedulerCreated>(TimeSpan.FromSeconds(10), cancellationToken: cancellationToken);
+                Assert.NotSame(first.Scheduler, second.Scheduler);
+                Assert.Equal(1, ThrowingShutdownPlugin.Failures);
+
+                termination = system.Terminate();
+                await termination.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                Assert.Equal(SchedulerStatus.Shutdown, second.Scheduler.Status);
+                Assert.Equal(CoordinatedShutdown.ActorSystemTerminateReason.Instance, CoordinatedShutdown.Get(system).ShutdownReason);
+            }
+            finally
+            {
+                await (termination ?? system.Terminate()).WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            }
+        }
+
+        public sealed class ThrowingShutdownPlugin : ISchedulerPlugin
+        {
+            private static int _failures;
+            public static int Failures => Volatile.Read(ref _failures);
+
+            public static void Reset() => _failures = 0;
+
+            public ValueTask Initialize(string name, IScheduler scheduler, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+            public ValueTask Start(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+            // Only the first scheduler fails, so the restarted one can shut down normally.
+            public ValueTask Shutdown(CancellationToken cancellationToken) =>
+                Interlocked.Increment(ref _failures) == 1
+                    ? throw new InvalidOperationException("Simulated plugin shutdown failure.")
+                    : ValueTask.CompletedTask;
+        }
+
+        private sealed class CrashingQuartzActor : QuartzActor
+        {
+            public const string Crash = "crash";
+
+            public CrashingQuartzActor(NameValueCollection properties) : base(properties) { }
+
+            protected override bool Receive(object message)
+            {
+                if (Crash.Equals(message)) throw new InvalidOperationException("Simulated failure to force a supervised restart.");
+                return base.Receive(message);
+            }
+
+            protected override void OnSchedulerCreated(IScheduler scheduler) =>
+                Context.System.EventStream.Publish(new SchedulerCreated(scheduler, scheduler.Status == SchedulerStatus.Running));
+        }
+
+        public sealed class DrainingPlugin : ISchedulerPlugin
+        {
+            private static int _initialized;
+            public static TaskCompletionSource<IScheduler> ShutdownEntered;
+            public static TaskCompletionSource<bool> Release;
+            public static int InitializedCount => Volatile.Read(ref _initialized);
+            private IScheduler _scheduler;
+
+            public static void Reset()
+            {
+                _initialized = 0;
+                ShutdownEntered = new TaskCompletionSource<IScheduler>(TaskCreationOptions.RunContinuationsAsynchronously);
+                Release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            public ValueTask Initialize(string name, IScheduler scheduler, CancellationToken cancellationToken)
+            {
+                _scheduler = scheduler;
+                Interlocked.Increment(ref _initialized);
+                return ValueTask.CompletedTask;
+            }
+
+            public ValueTask Start(CancellationToken cancellationToken) => ValueTask.CompletedTask;
+
+            // Stands in for jobs that are still running when the actor fails.
+            public async ValueTask Shutdown(CancellationToken cancellationToken)
+            {
+                ShutdownEntered.TrySetResult(_scheduler);
+                await Release.Task;
             }
         }
 
