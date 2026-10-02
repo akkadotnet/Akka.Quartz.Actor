@@ -16,7 +16,7 @@ foreach ($project in $projects) {
     # A unique directory means stale reports cannot satisfy this invocation's checks.
     $projectResults = Join-Path $ResultsDirectory "$($project.BaseName)-$([Guid]::NewGuid())"
     New-Item -ItemType Directory -Path $projectResults -Force | Out-Null
-    & dotnet test -c Release --no-build --project $project.FullName --results-directory $projectResults -- --report-trx
+    & dotnet test -c Release --no-build --project $project.FullName --results-directory $projectResults -- --report-trx --coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml
     if ($LASTEXITCODE -ne 0) { throw "Test project $($project.Name) exited with code $LASTEXITCODE." }
     $reports = @(Get-ChildItem $projectResults -Recurse -File -Filter '*.trx')
     if ($reports.Count -eq 0) { throw "No TRX results for $($project.Name)." }

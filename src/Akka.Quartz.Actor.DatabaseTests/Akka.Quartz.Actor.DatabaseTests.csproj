@@ -16,6 +16,7 @@
     <Content Include="fixtures/*.sql" CopyToOutputDirectory="Always" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="Testcontainers.MsSql" />
     <PackageReference Include="Testcontainers.PostgreSql" />

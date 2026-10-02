@@ -10,6 +10,7 @@
     <None Include="../../src/Akka.Quartz.Actor.IntegrationTests/quartz3_legacy_job.sql" Link="quartz3_legacy_job.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
