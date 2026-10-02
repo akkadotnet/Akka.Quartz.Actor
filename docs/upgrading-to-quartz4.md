@@ -12,7 +12,7 @@ Test with the actual application message types, calendars, serializer registrati
 
 ## Standalone helpers: SQL Server, PostgreSQL and SQLite
 
-The release archive contains two separate command-line applications. They never start Quartz, fire jobs or contact actors. The converter runs under .NET 8 with Quartz 3.14; the auditor runs under .NET 10 with Quartz 4.0.1. Install both runtimes on the migration machine. You can build the same archive contents from a source checkout with the SDK in `global.json`:
+Download `quartz-upgrade-tools.zip` from the matching [GitHub release](https://github.com/akkadotnet/Akka.Quartz.Actor/releases). It contains two separate command-line applications. They never start Quartz, fire jobs or contact actors. The converter runs under .NET 8 with Quartz 3.14; the auditor runs under .NET 10 with Quartz 4.0.1. Install both runtimes on the migration machine. You can build the same archive contents from a source checkout with the SDK in `global.json`:
 
 ```powershell
 pwsh -File scripts/publishUpgradeTools.ps1
@@ -94,7 +94,21 @@ Reference `Quartz.Serialization.Newtonsoft` in the application. Quartz 4's `json
 
 Applications that implement or call Quartz APIs must rebuild. `IJob.Execute` returns `ValueTask` and receives a `CancellationToken`; `Quartz.Spi` becomes `Quartz.Extensibility`, `Quartz.Simpl` becomes `Quartz.Impl`, and `StdSchedulerFactory` is replaced by `QuartzSchedulerBuilder`. Scheduler existence, lifecycle and scheduling APIs also changed. Follow compiler errors and the upstream guide rather than replacing only the actor package.
 
-Quartz 4 has no process-wide scheduler registry: constructing another actor with the same instance name does not share the first actor's RAM scheduler. Share an explicitly supplied scheduler if you require shared ownership. An actor disposes schedulers it creates; it leaves a supplied scheduler to its caller.
+Quartz 4 has no process-wide scheduler registry: constructing another actor with the same instance name does not share the first actor's scheduler. Share an explicitly supplied scheduler if you require shared ownership. An actor disposes schedulers it creates; it leaves a supplied scheduler to its caller.
+
+**Check every `new QuartzPersistentActor("name")`.** Under Quartz 3 that constructor returned an existing scheduler registered under the same name, so it could attach to a persistent scheduler configured elsewhere in the process. Under Quartz 4 it always creates a new scheduler with the default in-memory job store. Jobs are still accepted and reported as created, but they are lost when the process stops. The constructor is now `[Obsolete]`. Pass the job store properties instead, or supply the scheduler:
+
+```csharp
+var properties = new NameValueCollection
+{
+    [QuartzActor.PropertySchedulerInstanceName] = "QuartzScheduler", // keep the existing name
+    ["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.LocalTransactionJobStore, Quartz",
+    // ...data source, table prefix, driver delegate and quartz.serializer.type = newtonsoft
+};
+var quartzActor = system.ActorOf(Props.Create(() => new QuartzPersistentActor(properties)), "quartz");
+```
+
+When an actor that owns its scheduler restarts, the new incarnation waits until the previous scheduler with the same instance name has shut down, including its running jobs, before creating its own.
 
 ### Install the actor context before starting a supplied scheduler
 
