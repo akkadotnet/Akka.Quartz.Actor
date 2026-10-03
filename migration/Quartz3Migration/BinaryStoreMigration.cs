@@ -123,11 +123,13 @@ public static class BinaryStoreMigration
     {
         if (value is IDictionary map)
         {
-            var supportedMap = value.GetType() == typeof(Dictionary<string, object>)
-                && value is Dictionary<string, object> strings
+            // Quartz 3 stores job and trigger data as a serialized JobDataMap wrapping a Dictionary<string, object>.
+            var dictionary = value.GetType() == typeof(JobDataMap) ? ((JobDataMap)value).WrappedMap : value;
+            var supportedMap = dictionary.GetType() == typeof(Dictionary<string, object>)
+                && dictionary is Dictionary<string, object> strings
                 && DefaultStringComparerTypes.Contains(strings.Comparer.GetType())
-                || value.GetType() == typeof(Dictionary<object, object>)
-                && value is Dictionary<object, object> objects
+                || dictionary.GetType() == typeof(Dictionary<object, object>)
+                && dictionary is Dictionary<object, object> objects
                 && objects.Comparer.GetType() == EqualityComparer<object>.Default.GetType();
             if (!supportedMap)
                 throw new InvalidDataException("Custom map types or key comparers require application-specific migration.");

@@ -128,7 +128,7 @@ public sealed class ConversionTests
         binary.Initialize();
         var state = new PrivateState("important persisted value");
         Assert.Equal("important persisted value", state.Read());
-        var unsupported = binary.Serialize(new Dictionary<string, object> { ["custom"] = state });
+        var unsupported = binary.Serialize(JobData(new Dictionary<string, object> { ["custom"] = state }));
         await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", unsupported);
         await Assert.ThrowsAsync<InvalidDataException>(() => BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", apply, TestContext.Current.CancellationToken));
         Assert.Equal(before, await store.Blob("JOB_DETAILS", "JOB_DATA"));
@@ -142,7 +142,7 @@ public sealed class ConversionTests
         var before = await store.Blob("JOB_DETAILS", "JOB_DATA");
         var binary = new BinaryObjectSerializer();
         binary.Initialize();
-        var original = binary.Serialize(new Dictionary<string, object> { ["text"] = "2026-09-30T00:00:00+00:00" });
+        var original = binary.Serialize(JobData(new Dictionary<string, object> { ["text"] = "2026-09-30T00:00:00+00:00" }));
         await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", original);
         await Assert.ThrowsAsync<InvalidDataException>(() => BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken));
         Assert.Equal(before, await store.Blob("JOB_DETAILS", "JOB_DATA"));
@@ -195,11 +195,11 @@ public sealed class ConversionTests
         await using var store = await Fixture.Create();
         var binary = new BinaryObjectSerializer();
         binary.Initialize();
-        await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", binary.Serialize(new Dictionary<string, object>
+        await store.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", binary.Serialize(JobData(new Dictionary<string, object>
         {
             ["null"] = null!, ["text"] = "plain text", ["bool"] = true,
             ["integer"] = long.MinValue, ["bytes"] = new byte[] { 0, 128, 255 }
-        }));
+        })));
         await BinaryStoreMigration.ConvertAsync(store.Connection, "QRTZ_", "QuartzScheduler", true, TestContext.Current.CancellationToken);
         var json = new JsonObjectSerializer();
         json.Initialize();
@@ -232,6 +232,14 @@ public sealed class ConversionTests
         public Task Execute(IJobExecutionContext context) => Task.CompletedTask;
     }
 
+    // Quartz 3 writes job and trigger data as a serialized JobDataMap, never as a bare dictionary.
+    private static JobDataMap JobData(IDictionary entries)
+    {
+        var map = new JobDataMap();
+        foreach (DictionaryEntry entry in entries) map.Put((string)entry.Key, entry.Value!);
+        return map;
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly string _path = Path.Combine(Path.GetTempPath(), $"quartz-binary-{Guid.NewGuid():N}.db");
@@ -253,8 +261,8 @@ public sealed class ConversionTests
                 fixture.Message = (byte[])legacy["message"]!;
                 var binary = new BinaryObjectSerializer();
                 binary.Initialize();
-                await fixture.WriteBlob("UPDATE QRTZ_JOB_DETAILS SET JOB_DATA=@blob", binary.Serialize(legacy));
-                await fixture.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", binary.Serialize(new Dictionary<string, object> { ["count"] = 123 }));
+                await fixture.WriteBlob("UPDATE QRTZ_JOB_DETAILS SET JOB_DATA=@blob", binary.Serialize(JobData(legacy)));
+                await fixture.WriteBlob("UPDATE QRTZ_TRIGGERS SET JOB_DATA=@blob", binary.Serialize(JobData(new Dictionary<string, object> { ["count"] = 123 })));
                 await fixture.WriteBlob("INSERT INTO QRTZ_CALENDARS VALUES ('QuartzScheduler','holiday',@blob)", binary.Serialize(new HolidayCalendar()));
                 fixture.Schedule = await fixture.Scalar("SELECT START_TIME || ':' || NEXT_FIRE_TIME || ':' || MISFIRE_INSTR FROM QRTZ_TRIGGERS");
                 return fixture;
