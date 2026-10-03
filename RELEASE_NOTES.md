@@ -1,4 +1,4 @@
-#### 1.5.71-beta1 September 30 2026 ####
+#### 1.5.71-beta1 October 3 2026 ####
 
 * Align with **Akka.NET 1.5.71**; upgrade to **Quartz 4.0.1** and target **.NET 10 only**. This drops .NET Standard/.NET Framework and older .NET support despite retaining aligned 1.5 package numbering. Users who cannot move to .NET 10 should pin Akka.Quartz.Actor **1.5.59**.
 * **Read the [upgrade guide](https://github.com/akkadotnet/Akka.Quartz.Actor/blob/dev/docs/upgrading-to-quartz4.md) before upgrading.** It is also included in the NuGet package (`docs/upgrading-to-quartz4.md`) and the separate upgrade-helper archive. It walks through each upgrade path step by step, with screenshots from a real upgrade of a store written by Akka.Quartz.Actor 1.5.59; `examples/upgrade-walkthrough` reproduces it, and CI runs it for binary and JSON stores.
