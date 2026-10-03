@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The upgraded application: Akka.Quartz.Actor 1.5.71-beta1 / Quartz 4 (this repository's project). -->
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Akka.Quartz.Actor/Akka.Quartz.Actor.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Quartz.Serialization.Newtonsoft" />
+  </ItemGroup>
+</Project>

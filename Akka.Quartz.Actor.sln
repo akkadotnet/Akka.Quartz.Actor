@@ -30,6 +30,18 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "build-system", "build-syste
 		build-system\pr-validation.yaml = build-system\pr-validation.yaml
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "migration", "migration", "{C7F49633-8D5E-7E19-1580-A6459B2EAE66}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Quartz3Migration", "migration\Quartz3Migration\Quartz3Migration.csproj", "{3DB70F4F-D4AB-4FA6-A193-7AF768E2F584}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Quartz3Migration.Tests", "migration\Quartz3Migration.Tests\Quartz3Migration.Tests.csproj", "{327AD6CE-C1AF-4160-B494-9DC090C321FE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akka.Quartz.Actor.Upgrade", "src\Akka.Quartz.Actor.Upgrade\Akka.Quartz.Actor.Upgrade.csproj", "{67601E07-E5B9-470C-96BC-17FBC9EA0655}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akka.Quartz.Actor.DatabaseTests", "src\Akka.Quartz.Actor.DatabaseTests\Akka.Quartz.Actor.DatabaseTests.csproj", "{074D55BF-658D-4B42-A2EC-62C6841FE67C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -48,11 +60,31 @@ Global
 		{6F4BDCE1-AFEA-444B-BA13-B560E24C94C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6F4BDCE1-AFEA-444B-BA13-B560E24C94C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6F4BDCE1-AFEA-444B-BA13-B560E24C94C6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3DB70F4F-D4AB-4FA6-A193-7AF768E2F584}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3DB70F4F-D4AB-4FA6-A193-7AF768E2F584}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3DB70F4F-D4AB-4FA6-A193-7AF768E2F584}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3DB70F4F-D4AB-4FA6-A193-7AF768E2F584}.Release|Any CPU.Build.0 = Release|Any CPU
+		{327AD6CE-C1AF-4160-B494-9DC090C321FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{327AD6CE-C1AF-4160-B494-9DC090C321FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{327AD6CE-C1AF-4160-B494-9DC090C321FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{327AD6CE-C1AF-4160-B494-9DC090C321FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{67601E07-E5B9-470C-96BC-17FBC9EA0655}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{67601E07-E5B9-470C-96BC-17FBC9EA0655}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{67601E07-E5B9-470C-96BC-17FBC9EA0655}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{67601E07-E5B9-470C-96BC-17FBC9EA0655}.Release|Any CPU.Build.0 = Release|Any CPU
+		{074D55BF-658D-4B42-A2EC-62C6841FE67C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{074D55BF-658D-4B42-A2EC-62C6841FE67C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{074D55BF-658D-4B42-A2EC-62C6841FE67C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{074D55BF-658D-4B42-A2EC-62C6841FE67C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9B4742AA-8EED-486D-9607-BACFD98D3FB9} = {FB34DCD0-D371-472E-8E7D-0B29FE0B6D88}
+		{3DB70F4F-D4AB-4FA6-A193-7AF768E2F584} = {C7F49633-8D5E-7E19-1580-A6459B2EAE66}
+		{327AD6CE-C1AF-4160-B494-9DC090C321FE} = {C7F49633-8D5E-7E19-1580-A6459B2EAE66}
+		{67601E07-E5B9-470C-96BC-17FBC9EA0655} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{074D55BF-658D-4B42-A2EC-62C6841FE67C} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

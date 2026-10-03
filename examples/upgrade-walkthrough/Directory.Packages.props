@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- LegacyApp: the last Quartz 3 release of Akka.Quartz.Actor, as an existing application would use it. -->
+    <PackageVersion Include="Akka.Quartz.Actor" Version="1.5.59" />
+    <PackageVersion Include="Quartz.Serialization.Json" Version="3.13.1" />
+    <PackageVersion Include="System.Runtime.Serialization.Formatters" Version="10.0.12" />
+    <!-- NewApp: references this repository's Akka.Quartz.Actor project. -->
+    <PackageVersion Include="Quartz.Serialization.Newtonsoft" Version="4.0.1" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+  </ItemGroup>
+</Project>

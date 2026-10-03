@@ -1,4 +1,4 @@
-# Pull request validation for Windows against the `dev` and `master` branches
+# Pull request validation for Windows and Linux against the `dev` and `master` branches
 # See https://docs.microsoft.com/en-us/azure/devops/pipelines/yaml-schema for reference
 trigger:
   branches:
@@ -18,5 +18,12 @@ jobs:
   parameters:
     name: Windows
     vmImage: 'windows-latest'
-    scriptFileName: build.cmd
-    scriptArgs: all
+    displayName: 'Windows PR Validation'
+
+# This is the Azure DevOps PR-validation entry point. Linux supplies Docker for the
+# SQL Server and PostgreSQL migration tests, which the Windows job excludes.
+- template: azure-pipeline.template.yaml
+  parameters:
+    name: Linux
+    displayName: 'Linux PR Validation'
+    vmImage: 'ubuntu-latest'

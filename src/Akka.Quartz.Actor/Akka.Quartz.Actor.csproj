@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>$(NetStandardLibVersion)</TargetFramework>
+    <TargetFramework>$(NetTargetFramework)</TargetFramework>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <PackageIcon>icon.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -10,6 +10,7 @@
     <PackageReference Include="Quartz" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="../../docs/upgrading-to-quartz4.md" Pack="true" PackagePath="docs/" />
     <None Include="../../README.md" Pack="true" PackagePath="\" />
     <None Include="../../docs/images/icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>

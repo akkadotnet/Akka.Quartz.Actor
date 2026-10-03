@@ -17,7 +17,14 @@ variables:
     value: akkadotnet/Akka.Quartz.Actor
 
 jobs:
+  - template: azure-pipeline.template.yaml
+    parameters:
+      name: ReleaseValidation
+      displayName: 'Validate tagged revision including SQL Server and PostgreSQL migrations'
+      vmImage: ubuntu-latest
+
   - job: Release
+    dependsOn: ReleaseValidation
     pool:
       vmImage: windows-2022
       demands: Cmd
@@ -26,7 +33,7 @@ jobs:
         displayName: 'Use .NET SDK from global.json'
         inputs:
           useGlobalJson: true
-          
+
       - powershell: ./build.ps1
         displayName: 'Update Release Notes'
 
@@ -36,6 +43,11 @@ jobs:
       # Pack without version suffix for release
       - script: dotnet pack -c Release -o $(Build.ArtifactStagingDirectory)/nuget
         displayName: 'Create packages'
+
+      - pwsh: |
+          ./scripts/publishUpgradeTools.ps1 -OutputDirectory "$(Build.ArtifactStagingDirectory)/upgrade-tools"
+          Compress-Archive -Path "$(Build.ArtifactStagingDirectory)/upgrade-tools/*" -DestinationPath "$(Build.ArtifactStagingDirectory)/quartz-upgrade-tools.zip" -Force
+        displayName: 'Create standalone upgrade helper archive'
 
       - script: dotnet nuget push "$(Build.ArtifactStagingDirectory)\nuget\*.nupkg" --api-key $(nugetKey) --source https://api.nuget.org/v3/index.json --skip-duplicate
         displayName: 'Publish to NuGet.org'
@@ -56,4 +68,7 @@ jobs:
           repositoryName: $(githubRepositoryName)
           title: '$(projectName) v$(Build.SourceBranchName)'
           releaseNotesFile: 'RELEASE_NOTES_LATEST.md'
-          assets: '$(Build.ArtifactStagingDirectory)/nuget/*.nupkg'
+          isPreRelease: $(QuartzReleaseIsPrerelease)
+          assets: |
+            $(Build.ArtifactStagingDirectory)/nuget/*.nupkg
+            $(Build.ArtifactStagingDirectory)/quartz-upgrade-tools.zip

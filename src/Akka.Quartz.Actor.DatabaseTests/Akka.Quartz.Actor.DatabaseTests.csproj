@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <IsPackable>false</IsPackable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Akka.Quartz.Actor/Akka.Quartz.Actor.csproj" />
+    <ProjectReference Include="../Akka.Quartz.Actor.Upgrade/Akka.Quartz.Actor.Upgrade.csproj" />
+    <ProjectReference Include="../../migration/Quartz3Migration/Quartz3Migration.csproj" ReferenceOutputAssembly="false" />
+    <Compile Include="../Akka.Quartz.Actor.IntegrationTests/HelperProcess.cs" Link="HelperProcess.cs" />
+    <Content Include="../Akka.Quartz.Actor.IntegrationTests/quartz3_binary_blobs.sql" Link="quartz3_binary_blobs.sql" CopyToOutputDirectory="Always" />
+    <Content Include="fixtures/*.sql" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+</Project>

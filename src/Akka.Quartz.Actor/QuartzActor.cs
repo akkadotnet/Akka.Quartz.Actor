@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Collections.Specialized;
+using System.Threading.Tasks;
 using Akka.Actor;
 using Akka.Dispatch;
+using Akka.Event;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
 using Akka.Quartz.Actor.Exceptions;
 using Quartz;
-using Quartz.Impl;
 using IScheduler = Quartz.IScheduler;
 
 namespace Akka.Quartz.Actor
@@ -17,9 +18,16 @@ namespace Akka.Quartz.Actor
     /// </summary>
     public class QuartzActor : ActorBase
     {
+        /// <summary>
+        /// Quartz no longer exposes this as a public constant (StdSchedulerFactory was removed in 4.0),
+        /// so it's kept here for callers that used to reach it via StdSchedulerFactory.PropertySchedulerInstanceName.
+        /// </summary>
+        public const string PropertySchedulerInstanceName = "quartz.scheduler.instanceName";
+
         protected IScheduler Scheduler { get; private set; }
 
         private readonly bool _externallySupplied;
+        private OwnedSchedulerShutdown.OwnedScheduler _ownedScheduler;
 
         public QuartzActor()
         {
@@ -37,29 +45,30 @@ namespace Akka.Quartz.Actor
             {
                 props = new NameValueCollection();
             }
-            if (String.IsNullOrWhiteSpace(props.Get(StdSchedulerFactory.PropertySchedulerInstanceName)))
+            if (String.IsNullOrWhiteSpace(props.Get(PropertySchedulerInstanceName)))
             {
-                props.Set(StdSchedulerFactory.PropertySchedulerInstanceName, Guid.NewGuid().ToString());
+                props.Set(PropertySchedulerInstanceName, Guid.NewGuid().ToString());
             }
 
+            _ownedScheduler = new OwnedSchedulerShutdownExtension().Apply(Context.System).Register(props);
             ActorTaskScheduler.RunTask(async () =>
             {
-                if (props == null)
-                    Scheduler = await new StdSchedulerFactory().GetScheduler();
-                else
-                    Scheduler = await new StdSchedulerFactory(props).GetScheduler();
-
-                await Scheduler.Start();
+                Scheduler = await _ownedScheduler.Scheduler;
+                PrepareScheduler(Scheduler);
+                await _ownedScheduler.StartAsync(Scheduler);
                 OnSchedulerCreated(Scheduler);
             });
         }
 
         protected virtual void OnSchedulerCreated(IScheduler scheduler) { }
 
+        internal virtual void PrepareScheduler(IScheduler scheduler) { }
+
         public QuartzActor(IScheduler scheduler)
         {
             Scheduler = scheduler;
             _externallySupplied = true;
+            PrepareScheduler(Scheduler);
             OnSchedulerCreated(Scheduler);
         }
 
@@ -82,9 +91,22 @@ namespace Akka.Quartz.Actor
         {
             if (!_externallySupplied)
             {
-                ActorTaskScheduler.RunTask(() => Scheduler.Shutdown());
+                // PostStop cannot resume work through an actor mailbox that is being terminated.
+                _ = ShutdownSchedulerAsync(_ownedScheduler, Context.GetLogger());
             }
             base.PostStop();
+        }
+
+        private static async Task ShutdownSchedulerAsync(OwnedSchedulerShutdown.OwnedScheduler owned, ILoggingAdapter log)
+        {
+            try
+            {
+                if (owned != null) await owned.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                log.Error(exception, "Failed to dispose the actor-owned Quartz scheduler.");
+            }
         }
 
         protected virtual void CreateJobCommand(CreateJob createJob)
@@ -94,10 +116,12 @@ namespace Akka.Quartz.Actor
                 if (createJob.To == null)
                 {
                     Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.To))));
+                    return;
                 }
                 if (createJob.Trigger == null)
                 {
                     Context.Sender.Tell(new CreateJobFail(null, null, new ArgumentNullException(nameof(createJob.Trigger))));
+                    return;
                 }
                 else
                 {
