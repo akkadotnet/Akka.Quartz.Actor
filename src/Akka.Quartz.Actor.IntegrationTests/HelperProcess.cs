@@ -18,7 +18,7 @@ internal static class HelperProcess
         Assert.NotNull(root);
         var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent!.Name;
         var relative = name == "Quartz3Migration"
-            ? $"migration/Quartz3Migration/bin/{configuration}/net8.0/Quartz3Migration.dll"
+            ? $"migration/Quartz3Migration/bin/{configuration}/net10.0/Quartz3Migration.dll"
             : $"src/Akka.Quartz.Actor.Upgrade/bin/{configuration}/net10.0/Akka.Quartz.Actor.Upgrade.dll";
         var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         start.ArgumentList.Add(Path.Combine(root.FullName, relative));

@@ -12,13 +12,27 @@ Test with the actual application message types, calendars, serializer registrati
 
 ## Standalone helpers: SQL Server, PostgreSQL and SQLite
 
-Download `quartz-upgrade-tools.zip` from the matching [GitHub release](https://github.com/akkadotnet/Akka.Quartz.Actor/releases). It contains two separate command-line applications. They never start Quartz, fire jobs or contact actors. The converter runs under .NET 8 with Quartz 3.14; the auditor runs under .NET 10 with Quartz 4.0.1. Install both runtimes on the migration machine. You can build the same archive contents from a source checkout with the SDK in `global.json`:
+There are two separate command-line applications: a converter that uses Quartz 3.14 and an auditor that uses Quartz 4.0.1. They never start Quartz, fire jobs or contact actors. Both run on the **.NET 10 runtime**; install it on the migration machine.
 
-```powershell
-pwsh -File scripts/publishUpgradeTools.ps1
+**Download them:** `quartz-upgrade-tools.zip` is attached to each [GitHub release](https://github.com/akkadotnet/Akka.Quartz.Actor/releases). Extract it; it contains `quartz3-convert/`, `quartz4-audit/` and this guide.
+
+**Or build them from source:** you need Git and the .NET 10 SDK (see `global.json`). Check out the release tag that matches the package version you are upgrading to, so the helpers match that release:
+
+```shell
+git clone https://github.com/akkadotnet/Akka.Quartz.Actor.git
+cd Akka.Quartz.Actor
+git checkout 1.5.71-beta1
+pwsh -File scripts/publishUpgradeTools.ps1   # writes artifacts/upgrade-tools
 ```
 
-The following commands assume you are in the extracted archive or `artifacts/upgrade-tools`. Both CLIs support **SQL Server, PostgreSQL and SQLite**. SQLite uses `--database`; SQL Server and PostgreSQL use `--provider sqlserver|postgres --connection-string-env <variable-name>`. Connection strings are read from the named environment variable and never printed. The examples below use SQLite; select the connection options for your provider and use the same dry-run, apply and audit steps:
+Without PowerShell, publish the two projects directly:
+
+```shell
+dotnet publish migration/Quartz3Migration/Quartz3Migration.csproj -c Release -o artifacts/upgrade-tools/quartz3-convert
+dotnet publish src/Akka.Quartz.Actor.Upgrade/Akka.Quartz.Actor.Upgrade.csproj -c Release -o artifacts/upgrade-tools/quartz4-audit
+```
+
+The following commands assume you are in the extracted archive or `artifacts/upgrade-tools`. Run `dotnet quartz3-convert/Quartz3Migration.dll --help` or `dotnet quartz4-audit/Akka.Quartz.Actor.Upgrade.dll --help` to confirm the runtime is installed. Both CLIs support **SQL Server, PostgreSQL and SQLite**. SQLite uses `--database`; SQL Server and PostgreSQL use `--provider sqlserver|postgres --connection-string-env <variable-name>`. Connection strings are read from the named environment variable and never printed. Select the connection options for your provider and use the same dry-run, apply and audit steps:
 
 | Provider | Connection options | Default-schema example prefix |
 | --- | --- | --- |
@@ -39,13 +53,13 @@ The environment variable's connection string must select the existing target dat
 
 Skip this conversion if your store already uses compatible Newtonsoft JSON. A message's legacy `byte[]` value *inside JSON* is supported by the new actor and does not need conversion. A BinaryFormatter-encoded database blob is different: Quartz 4 cannot read it.
 
-Use an offline backup produced from a trusted application. BinaryFormatter deserialization can execute code from the saved types, including during a dry run. The helper requires an explicit acknowledgement and must not be used on an untrusted database.
+Use an offline backup produced from a trusted application. BinaryFormatter deserialization can execute code from the saved types, including during a dry run. .NET 9 and later removed BinaryFormatter, so the converter restores it with Microsoft's unsupported `System.Runtime.Serialization.Formatters` compatibility package; use it only for this offline conversion. The helper requires an explicit acknowledgement and must not be used on an untrusted database.
 
 ```shell
 dotnet quartz3-convert/Quartz3Migration.dll --database backup.db --trusted-backup --scheduler QuartzScheduler
 ```
 
-This validates and reports binary, JSON and empty blob counts without writing. Inspect failures before proceeding. Load required .NET 8-compatible application types with repeatable `--assembly /path/to/application.dll`; sibling dependencies are resolved from that directory. The helper converts plain `Dictionary<string, object>` and `Dictionary<object, object>` maps with string keys and default key comparison (ordinal comparison is also supported for string dictionaries). Values may contain only null, strings, booleans, integer values and byte arrays. It verifies every recovered value against its original, including Akka message bytes, before writing. JSON can change integer boxing (for example, `int` to `long`); rehearse jobs that rely on exact boxed types. Strings parsed as dates, floating-point values, nested objects, custom map types/comparers and arbitrary application objects are rejected rather than risking silent changes. Unsupported values need application-specific conversion while Quartz 3 is available; merely loading their assembly does not make them safe to convert.
+This validates and reports binary, JSON and empty blob counts without writing. Inspect failures before proceeding. Load required application types (assemblies that load on .NET 10) with repeatable `--assembly /path/to/application.dll`; sibling dependencies are resolved from that directory. The helper converts plain `Dictionary<string, object>` and `Dictionary<object, object>` maps with string keys and default key comparison (ordinal comparison is also supported for string dictionaries). Values may contain only null, strings, booleans, integer values and byte arrays. It verifies every recovered value against its original, including Akka message bytes, before writing. JSON can change integer boxing (for example, `int` to `long`); rehearse jobs that rely on exact boxed types. Strings parsed as dates, floating-point values, nested objects, custom map types/comparers and arbitrary application objects are rejected rather than risking silent changes. Unsupported values need application-specific conversion while Quartz 3 is available; merely loading their assembly does not make them safe to convert.
 
 The converter supports Quartz's stock Base, Annual, Cron, Daily, Holiday, Monthly and Weekly calendars, including stock base chains, only when their scheduling settings survive the JSON round trip unchanged. It checks calendar types, exclusions/ranges/cron expressions, descriptions, time zones and their rules, and base chains. It also checks DailyCalendar's next-included-time precision, which can differ between Quartz 3's binary and JSON readers. Any mismatch requires application-specific migration. Custom calendar subclasses are rejected. The helper preserves identities, fire times and other schedule columns.
 

@@ -4,7 +4,7 @@ using Quartz3Migration;
 
 if (args.Length == 0 || args.Contains("--help"))
 {
-    Console.WriteLine("Quartz 3 SQL Server/PostgreSQL/SQLite binary-to-Newtonsoft converter (.NET 8). Dry-run by default.");
+    Console.WriteLine("Quartz 3 SQL Server/PostgreSQL/SQLite binary-to-Newtonsoft converter. Dry-run by default.");
     Console.WriteLine("--provider sqlite|sqlserver|postgres (--database <file> | --connection-string-env <name>) --trusted-backup [--scheduler <name>] [--prefix QRTZ_]"
         + " [--assembly <application.dll>] [--apply --schedulers-stopped]");
     return 0;

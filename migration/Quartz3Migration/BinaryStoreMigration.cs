@@ -110,14 +110,22 @@ public static class BinaryStoreMigration
         return result;
     }
 
+    // Default ordinal string comparers. .NET 10's default is an internal StringEqualityComparer, but binary
+    // blobs written by earlier runtimes deserialize the same default as GenericEqualityComparer<string>.
+    private static readonly HashSet<Type> DefaultStringComparerTypes = new[]
+    {
+        EqualityComparer<string>.Default.GetType(),
+        StringComparer.Ordinal.GetType(),
+        typeof(EqualityComparer<string>).Assembly.GetType("System.Collections.Generic.GenericEqualityComparer`1")?.MakeGenericType(typeof(string))
+    }.OfType<Type>().ToHashSet();
+
     private static void ValidateSupportedValue(object value)
     {
         if (value is IDictionary map)
         {
             var supportedMap = value.GetType() == typeof(Dictionary<string, object>)
                 && value is Dictionary<string, object> strings
-                && (strings.Comparer.GetType() == EqualityComparer<string>.Default.GetType()
-                    || strings.Comparer.GetType() == StringComparer.Ordinal.GetType())
+                && DefaultStringComparerTypes.Contains(strings.Comparer.GetType())
                 || value.GetType() == typeof(Dictionary<object, object>)
                 && value is Dictionary<object, object> objects
                 && objects.Comparer.GetType() == EqualityComparer<object>.Default.GetType();

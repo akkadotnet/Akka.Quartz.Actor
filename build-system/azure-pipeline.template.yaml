@@ -42,12 +42,6 @@ jobs:
           packageType: runtime
           version: $(DotNetRuntimeVersion)
 
-      - task: UseDotNet@2
-        displayName: 'Use .NET 8 runtime for the offline Quartz 3 migration helper tests'
-        inputs:
-          packageType: runtime
-          version: 8.x
-
       - script: dotnet tool restore
         displayName: 'Restore dotnet tools'
 

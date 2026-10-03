@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <!-- This offline converter needs Quartz 3's binary reader, which .NET 9+ removed. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Quartz 3 reads binary blobs with BinaryFormatter, which .NET 9+ removed from the runtime. The unsupported
+         System.Runtime.Serialization.Formatters package restores it for this offline, trusted-backup-only tool. -->
     <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
   </PropertyGroup>
   <ItemGroup>
@@ -13,5 +14,6 @@
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Quartz" />
     <PackageReference Include="Quartz.Serialization.Json" />
+    <PackageReference Include="System.Runtime.Serialization.Formatters" />
   </ItemGroup>
 </Project>

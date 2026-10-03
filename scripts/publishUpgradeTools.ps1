@@ -14,4 +14,4 @@ foreach ($tool in @(
     if ($LASTEXITCODE -ne 0) { throw "Published $($tool.Directory) failed its --help smoke test." }
 }
 Copy-Item (Join-Path $repository 'docs/upgrading-to-quartz4.md') (Join-Path $OutputDirectory 'UPGRADE_GUIDE.md')
-Write-Host "Upgrade tools published to $OutputDirectory. The converter requires .NET 8; the auditor requires .NET 10."
+Write-Host "Upgrade tools published to $OutputDirectory. Both require the .NET 10 runtime."
