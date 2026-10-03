@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Akka.Quartz.Actor.Upgrade;
 using QuartzUpgradeTools;
@@ -32,7 +33,8 @@ try
     await using var connection = StoreConnection.Create(provider, database, connectionStringEnvironment, readOnly: true);
     await connection.OpenAsync();
     var report = await StoreAudit.InspectAsync(connection, prefix, scheduler);
-    Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+    // Console-only output: relaxed escaping keeps quotes in cron expressions readable.
+    Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
     return report.Issues.Count == 0 ? 0 : 1;
 }
 catch (Exception exception)
