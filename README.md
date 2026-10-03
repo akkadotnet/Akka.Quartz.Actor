@@ -6,7 +6,7 @@ This is the Quartz integration plugin for Akka.NET.
 
 Akka.Quartz.Actor **1.5.71-beta1** aligns with **Akka.NET 1.5.71** and requires **.NET 10 / Quartz 4.0.1**. This is a breaking upgrade; pin **1.5.59** if you need the previous platform support.
 
-Read the [upgrade guide](https://github.com/akkadotnet/Akka.Quartz.Actor/blob/dev/docs/upgrading-to-quartz4.md) before updating an existing deployment ([local copy](docs/upgrading-to-quartz4.md), also included in the NuGet package). It covers offline cutover, binary storage conversion, cron auditing, mandatory schema migration, serializer configuration, startup ordering and rollback. Standalone SQL Server, PostgreSQL and SQLite conversion/audit helpers are attached to each [GitHub release](https://github.com/akkadotnet/Akka.Quartz.Actor/releases) as `quartz-upgrade-tools.zip`; or build them from a checkout of the release tag; see the guide.
+Read the [upgrade guide](https://github.com/akkadotnet/Akka.Quartz.Actor/blob/dev/docs/upgrading-to-quartz4.md) before updating an existing deployment (also included in the NuGet package as `docs/upgrading-to-quartz4.md`). It covers offline cutover, binary storage conversion, cron auditing, mandatory schema migration, serializer configuration, startup ordering and rollback. Standalone SQL Server, PostgreSQL and SQLite conversion/audit helpers are attached to each [GitHub release](https://github.com/akkadotnet/Akka.Quartz.Actor/releases) as `quartz-upgrade-tools.zip`; or build them from a checkout of the release tag; see the guide.
 
 ## Using ##
 Install:
