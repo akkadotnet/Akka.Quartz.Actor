@@ -60,6 +60,14 @@ jobs:
           ./scripts/runTests.ps1 -ExcludeDatabaseTests:$excludeDatabaseTests -ResultsDirectory "$(Build.SourcesDirectory)/TestResults/$(Build.BuildId)"
         displayName: 'Run tests'
 
+      # Seeds a real Akka.Quartz.Actor 1.5.59 / Quartz 3 store and upgrades it by following the guide.
+      - script: |
+          set -e
+          examples/upgrade-walkthrough/run-walkthrough.sh "$(Agent.TempDirectory)/walkthrough-binary" binary
+          examples/upgrade-walkthrough/run-walkthrough.sh "$(Agent.TempDirectory)/walkthrough-json" json
+        displayName: 'Run the upgrade guide walkthrough'
+        condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
+
       - task: PublishTestResults@2
         condition: succeededOrFailed()
         inputs:

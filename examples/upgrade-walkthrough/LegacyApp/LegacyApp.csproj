@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Stands in for an existing application on Akka.Quartz.Actor 1.5.59 / Quartz 3 that stores jobs with
+    quartz.serializer.type = binary (or json). Such applications typically ran on .NET 8; this sample runs on .NET 10, so it
+    restores BinaryFormatter with the unsupported compatibility package. The stored data is the same.
+  -->
+  <PropertyGroup>
+    <EnableUnsafeBinaryFormatterSerialization>true</EnableUnsafeBinaryFormatterSerialization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Akka.Quartz.Actor" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Quartz.Serialization.Json" />
+    <PackageReference Include="System.Runtime.Serialization.Formatters" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="tables_sqlite_quartz3.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

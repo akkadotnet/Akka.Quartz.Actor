@@ -14,4 +14,8 @@ foreach ($tool in @(
     if ($LASTEXITCODE -ne 0) { throw "Published $($tool.Directory) failed its --help smoke test." }
 }
 Copy-Item (Join-Path $repository 'docs/upgrading-to-quartz4.md') (Join-Path $OutputDirectory 'UPGRADE_GUIDE.md')
+# The guide's screenshots use relative paths, so they ship beside it.
+$images = Join-Path $OutputDirectory 'images'
+New-Item -ItemType Directory -Path $images -Force | Out-Null
+Copy-Item (Join-Path $repository 'docs/images/upgrade') $images -Recurse -Force
 Write-Host "Upgrade tools published to $OutputDirectory. Both require the .NET 10 runtime."
