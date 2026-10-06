@@ -23,19 +23,7 @@ namespace Akka.Quartz.Actor.IntegrationTests
         [Fact]
         public async Task QuartzPersistentActor_DB_Should_Create_Job()
         {
-            var properties = new NameValueCollection
-            {
-                ["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.LocalTransactionJobStore, Quartz",
-                ["quartz.jobStore.useProperties"] = "false",
-                ["quartz.jobStore.dataSource"] = "default",
-                ["quartz.jobStore.tablePrefix"] = "qrtz_",
-                ["quartz.jobStore.driverDelegateType"] = "Quartz.Impl.AdoJobStore.SQLiteDelegate, Quartz",
-                ["quartz.dataSource.default.provider"] = "SQLite-Microsoft",
-                ["quartz.dataSource.default.connectionString"] = "Data Source=quartz-jobs.db",
-                ["quartz.serializer.type"] = "newtonsoft"
-            };
-
-            StandaloneSchedulerFactory sf = QuartzSchedulerBuilder.Create().UseProperties(properties).Build();
+            StandaloneSchedulerFactory sf = QuartzSchedulerBuilder.Create().UseProperties(StoreProperties()).Build();
             var sched = await sf.GetScheduler(TestContext.Current.CancellationToken);
             await sched.Start(TestContext.Current.CancellationToken);
 
@@ -49,6 +37,56 @@ namespace Akka.Quartz.Actor.IntegrationTests
             Sys.Stop(quartzActor);
             await sf.DisposeAsync();
         }
+
+        /// <summary>
+        /// Replaces a stored job by sending <see cref="RemoveJob"/> and then <see cref="CreatePersistentJob"/>
+        /// for the same keys, without waiting for <see cref="JobRemoved"/> in between.
+        /// See https://github.com/akkadotnet/Akka.Quartz.Actor/issues/374
+        /// </summary>
+        [Theory]
+        [InlineData("0 0 0 1 1 ?")] // idle job
+        [InlineData("* * * * * ?")] // job that fires while it is being replaced
+        public async Task QuartzPersistentActor_DB_Should_Create_Job_Right_After_Removing_It(string cron)
+        {
+            var jobKey = new JobKey("remove-then-create");
+            var triggerKey = new TriggerKey("remove-then-create");
+            ITrigger Trigger() => TriggerBuilder.Create().WithIdentity(triggerKey).ForJob(jobKey).WithCronSchedule(cron).Build();
+
+            StandaloneSchedulerFactory sf = QuartzSchedulerBuilder.Create().UseProperties(StoreProperties()).Build();
+            var sched = await sf.GetScheduler(TestContext.Current.CancellationToken);
+            await sched.Start(TestContext.Current.CancellationToken);
+
+            var probe = CreateTestProbe(Sys);
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(sched)), "QuartzActor");
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello", Trigger()));
+            ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
+
+            for (var round = 0; round < 50; round++)
+            {
+                quartzActor.Tell(new RemoveJob(jobKey, triggerKey));
+                quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello", Trigger()));
+                ExpectMsg<JobRemoved>(cancellationToken: TestContext.Current.CancellationToken);
+                ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
+            }
+
+            // the store outlives this test, so leave nothing behind for the next one
+            quartzActor.Tell(new RemoveJob(jobKey, triggerKey));
+            ExpectMsg<JobRemoved>(cancellationToken: TestContext.Current.CancellationToken);
+            Sys.Stop(quartzActor);
+            await sf.DisposeAsync();
+        }
+
+        private static NameValueCollection StoreProperties() => new NameValueCollection
+        {
+            ["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.LocalTransactionJobStore, Quartz",
+            ["quartz.jobStore.useProperties"] = "false",
+            ["quartz.jobStore.dataSource"] = "default",
+            ["quartz.jobStore.tablePrefix"] = "qrtz_",
+            ["quartz.jobStore.driverDelegateType"] = "Quartz.Impl.AdoJobStore.SQLiteDelegate, Quartz",
+            ["quartz.dataSource.default.provider"] = "SQLite-Microsoft",
+            ["quartz.dataSource.default.connectionString"] = "Data Source=quartz-jobs.db",
+            ["quartz.serializer.type"] = "newtonsoft"
+        };
 
         public class SqliteFixture : IDisposable
         {
