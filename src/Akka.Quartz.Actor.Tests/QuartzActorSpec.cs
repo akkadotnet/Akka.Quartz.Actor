@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading;
 using Akka.Actor;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
@@ -11,11 +10,6 @@ namespace Akka.Quartz.Actor.Tests
 {
     public class QuartzActorSpec : TestKit.Xunit.TestKit
     {
-        public QuartzActorSpec(): base()
-        {
-
-        }
-
         [Fact]
         public void QuartzActor_Should_Create_Job()
         {
@@ -24,8 +18,7 @@ namespace Akka.Quartz.Actor.Tests
             quartzActor.Tell(new CreateJob(probe, "Hello", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
             probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
-            Thread.Sleep(TimeSpan.FromSeconds(10));
-            probe.ExpectMsg("Hello", cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
             Sys.Stop(quartzActor);
         }
 
@@ -36,11 +29,23 @@ namespace Akka.Quartz.Actor.Tests
             var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActor");
             quartzActor.Tell(new CreateJob(probe, "Hello remove", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             var jobCreated = ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
-            probe.ExpectMsg("Hello remove", TimeSpan.FromSeconds(12), cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg("Hello remove", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
             quartzActor.Tell(new RemoveJob(jobCreated.JobKey, jobCreated.TriggerKey));
             ExpectMsg<JobRemoved>(cancellationToken: TestContext.Current.CancellationToken);
-            Thread.Sleep(TimeSpan.FromSeconds(10));
-            probe.ExpectNoMsg(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            probe.ExpectNoMsg(TimeSpan.FromSeconds(11), TestContext.Current.CancellationToken);
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public void QuartzActor_Should_Replace_Job()
+        {
+            var probe = CreateTestProbe(Sys);
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActor");
+            quartzActor.Tell(new CreateJob(probe, "Hello", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
+            ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
+            quartzActor.Tell(new CreateJob(probe, "Hello", TriggerBuilder.Create().WithCronSchedule("0/5 * * * * ?").Build(), ScheduleJobOptions.Replacing));
+            probe.ExpectMsg("Hello", TimeSpan.FromSeconds(6), cancellationToken: TestContext.Current.CancellationToken);
             Sys.Stop(quartzActor);
         }
 
@@ -68,10 +73,9 @@ namespace Akka.Quartz.Actor.Tests
         [Fact]
         public void QuartzActor_Should_Not_Remove_UnExisting_Job()
         {
-            var probe = CreateTestProbe(Sys);
             var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActor");
             quartzActor.Tell(new RemoveJob(new JobKey("key"), new TriggerKey("key")));
-            var failure=ExpectMsg<RemoveJobFail>(cancellationToken: TestContext.Current.CancellationToken);
+            var failure = ExpectMsg<RemoveJobFail>(cancellationToken: TestContext.Current.CancellationToken);
             Assert.IsType<JobNotFoundException>(failure.Reason);
             Sys.Stop(quartzActor);
         }

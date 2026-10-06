@@ -10,17 +10,17 @@ namespace Akka.Quartz.Actor.Commands
         : IJobCommand
     {
         /// <summary>
-        ///     The desination actor
+        ///     The destination actor
         /// </summary>
         public IActorRef To { get; private set; } = to;
 
         /// <summary>
-        ///     Message
+        ///     Message to be sent to the destination actor
         /// </summary>
         public object Message { get; private set; } = message;
 
         /// <summary>
-        ///     Trigger 
+        ///     Schedule job execution trigger 
         /// </summary>
         public ITrigger Trigger { get; private set; } = trigger;
 
