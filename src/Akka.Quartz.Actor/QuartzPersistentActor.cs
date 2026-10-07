@@ -91,7 +91,7 @@ namespace Akka.Quartz.Actor
                         QuartzPersistentJob.CreateBuilderWithData(createJob.To, createJob.Message, Context.System)
                             .WithIdentity(createJob.Trigger.JobKey)
                             .Build();
-                        await Scheduler.ScheduleJob(job, createJob.Trigger);
+                        await Scheduler.ScheduleJob(job, createJob.Trigger, createJob.Options);
 
                         Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
                     }
