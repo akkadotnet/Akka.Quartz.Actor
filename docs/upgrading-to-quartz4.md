@@ -1,10 +1,10 @@
 # Upgrading Akka.Quartz.Actor to Quartz 4
 
-Akka.Quartz.Actor **1.5.71-beta1** stays aligned with **Akka.NET 1.5.71** and moves to **Quartz 4.0.1**. Quartz 4.0.1 ships only a .NET 10 build, so Akka.Quartz.Actor, and every application that uses it, must now target **.NET 10**. This is a breaking platform and dependency upgrade despite the package remaining in the 1.5 series. Applications on .NET Framework, .NET Standard, .NET 8 or .NET 9 must stay on **1.5.59** until they can move to .NET 10. Pin the old package explicitly if you cannot migrate yet.
+Akka.Quartz.Actor **1.5.71-beta2** stays aligned with **Akka.NET 1.5.71** and moves to **Quartz 4.0.1**. Quartz 4.0.1 ships only a .NET 10 build, so Akka.Quartz.Actor, and every application that uses it, must now target **.NET 10**. This is a breaking platform and dependency upgrade despite the package remaining in the 1.5 series. Applications on .NET Framework, .NET Standard, .NET 8 or .NET 9 must stay on **1.5.59** until they can move to .NET 10. Pin the old package explicitly if you cannot migrate yet.
 
 Installing the new package does **not** convert stored data, repair cron expressions or upgrade the database schema. This guide walks through each of those steps.
 
-> **About the screenshots:** they come from a real run of this guide. A sample application on Akka.Quartz.Actor 1.5.59 and Quartz 3.14 stored its jobs in SQLite with the binary serializer; that database was then upgraded with exactly the commands shown, and a 1.5.71-beta1 application picked up the old jobs. To repeat it yourself, see [`examples/upgrade-walkthrough`](https://github.com/akkadotnet/Akka.Quartz.Actor/tree/dev/examples/upgrade-walkthrough).
+> **About the screenshots:** they come from a real run of this guide. A sample application on Akka.Quartz.Actor 1.5.59 and Quartz 3.14 stored its jobs in SQLite with the binary serializer; that database was then upgraded with exactly the commands shown, and a 1.5.71-beta2 application picked up the old jobs. To repeat it yourself, see [`examples/upgrade-walkthrough`](https://github.com/akkadotnet/Akka.Quartz.Actor/tree/dev/examples/upgrade-walkthrough).
 
 ![Terminal: the sample Quartz 3 application schedules four jobs (heartbeat, daily-report, inventory-sync and weekly-cleanup), pauses the maintenance trigger group, and its /user/reminders actor receives three heartbeats before the Quartz 3 scheduler stops](images/upgrade/01-legacy-app.png)
 
@@ -79,7 +79,7 @@ They never start Quartz, fire jobs or contact actors. Both run on the **.NET 10 
 ```shell
 git clone https://github.com/akkadotnet/Akka.Quartz.Actor.git
 cd Akka.Quartz.Actor
-git checkout 1.5.71-beta1
+git checkout 1.5.71-beta2
 pwsh -File scripts/publishUpgradeTools.ps1   # writes artifacts/upgrade-tools
 ```
 
@@ -267,7 +267,7 @@ Every path needs these changes.
 **Packages and target framework.**
 
 - Target .NET 10.
-- Reference Akka.Quartz.Actor 1.5.71-beta1 and the matching Akka.NET 1.5.71 packages.
+- Reference Akka.Quartz.Actor 1.5.71-beta2 and the matching Akka.NET 1.5.71 packages.
 - Upgrade every direct Quartz package to 4.0.1 at the same time.
 - Replace `Quartz.Serialization.Json` with `Quartz.Serialization.Newtonsoft`.
 - Remove the 3.x `Quartz.Extensions.DependencyInjection`, `Quartz.Extensions.Hosting` and `Quartz.Serialization.SystemTextJson` packages; their APIs moved into Quartz itself.
@@ -290,6 +290,8 @@ Set `newtonsoft` on path C as well: the converter writes the same JSON format Qu
 Scheduler lifecycle and scheduling APIs also changed; follow the compiler errors and the upstream guide.
 
 **Check every `new QuartzPersistentActor("name")`.** Under Quartz 3, that constructor returned an existing scheduler registered under the same name, so it could attach to a persistent scheduler configured elsewhere in the process. Quartz 4 has no such registry: the constructor always creates a new scheduler with the default **in-memory** job store. Jobs are still accepted and reported as created, but they are lost when the process stops. The constructor is now `[Obsolete]`. Pass the job store properties instead, or supply the scheduler. This is the walkthrough's upgraded configuration:
+
+Prior to version 1.5.71 Akka.Quartz.Actor replacing an existing job required sending the `RemoveJob` command followed by  `CreateJob` or `CreatePersistentJob`. `CreateJob` and `CreatePersistentJob` commands now support replacing existing jobs if they exist by specifying  `Options` property of `ScheduleJobOptions` type. The job to be replaced must match on both job and trigger keys.    
 
 ```csharp
 var properties = new NameValueCollection
