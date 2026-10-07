@@ -8,6 +8,17 @@ namespace Akka.Quartz.Actor.Commands
     /// </summary>
     public class CreateJob : IJobCommand
     {
+        /// <summary>
+        /// Create a scheduler job 
+        /// </summary>
+        /// <param name="to">The destination actor</param>
+        /// <param name="message">Message to be scheduled</param>
+        /// <param name="trigger">Job execution trigger</param>
+        /// <param name="options">Job options</param>
+        /// <remarks>ScheduleJobOptions has single property Replace (can also be specified using static method ScheduleJobOptions.Replacing).
+        /// When set to false (the default), attempting to schedule a job or trigger with a key that already exists throws an ObjectAlreadyExistsException.
+        /// When set to true, it overwrites any already stored jobs and/or triggers with the same keys in a single operation under the store's lock.
+        /// </remarks>
         public CreateJob(IActorRef to, object message, ITrigger trigger, ScheduleJobOptions options = default)
         {
             To = to;
@@ -22,18 +33,22 @@ namespace Akka.Quartz.Actor.Commands
         public IActorRef To { get; private set; }
 
         /// <summary>
-        ///     Message to be sent to the destination actor
+        ///     Message to be scheduled
         /// </summary>
         public object Message { get; private set; }
 
         /// <summary>
-        ///     Schedule job execution trigger 
+        ///     Job execution trigger 
         /// </summary>
         public ITrigger Trigger { get; private set; }
     
         /// <summary>
-        ///     Schedule job options 
+        ///     Job options 
         /// </summary>
+        /// <remarks>ScheduleJobOptions has single property Replace (can also be specified using static method ScheduleJobOptions.Replacing).
+        /// When set to false (the default), attempting to schedule a job or trigger with a key that already exists throws an ObjectAlreadyExistsException.
+        /// When set to true, it overwrites any already stored jobs and/or triggers with the same keys in a single operation under the store's lock.
+        /// </remarks>
         public ScheduleJobOptions Options { get; private set; }
     }
 }
