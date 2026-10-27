@@ -1,0 +1,369 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Linq;
+using System.Threading.Tasks;
+using Akka.Actor;
+using Akka.Quartz.Actor.Commands;
+using Akka.Quartz.Actor.Events;
+using Quartz;
+using Xunit;
+using IScheduler = Quartz.IScheduler;
+
+namespace Akka.Quartz.Actor.Tests
+{
+    /// <summary>
+    /// Replacement semantics for <see cref="ScheduleJobOptions.Replacing"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These tests inspect the scheduler's own job and trigger state instead of only waiting for a
+    /// message. Receiving the replacement payload proves the new trigger fires; it does not prove the
+    /// original job record was replaced. Quartz replaces a trigger by key and, in
+    /// <c>RAMJobStore.AddTriggerNoLock</c>, removes the old trigger with
+    /// <c>removeOrphanedJob: false</c> - so a replacement that lands on a different job key leaves the
+    /// original job behind with no trigger pointing at it.
+    /// </para>
+    /// <para>
+    /// Every trigger is built fresh for each command. Quartz assigns the scheduled job key to the
+    /// supplied trigger when it has none (<c>QuartzScheduler.ScheduleJob</c>), so reusing one trigger
+    /// instance across a create and a replace would hide the defect by carrying the first job key into
+    /// the second command.
+    /// </para>
+    /// <para>
+    /// The original schedule is dormant (<c>0 0 0 1 1 ?</c>, once a year) so only the replacement can
+    /// deliver a message, and the replacement schedule fires every second. That keeps the tests fast
+    /// and removes the wall-clock dependence of waiting on several real cron firings.
+    /// </para>
+    /// </remarks>
+    public class ReplaceJobSpec : TestKit.Xunit.TestKit
+    {
+        private const string DormantCron = "0 0 0 1 1 ?";
+        private const string FastCron = "* * * * * ?";
+        private const string MessageKey = "message";
+
+        private static readonly JobKey Job = new JobKey("greeting-job");
+        private static readonly TriggerKey TriggerId = new TriggerKey("greeting-trigger");
+        private static readonly TriggerKey SecondTriggerId = new TriggerKey("second-trigger");
+
+        /// <summary>A trigger that names both the job and the trigger.</summary>
+        private static ITrigger Trigger(string cron) => TriggerBuilder.Create()
+            .WithIdentity(TriggerId)
+            .ForJob(Job)
+            .WithCronSchedule(cron)
+            .Build();
+
+        /// <summary>A second trigger for the same job, under a different trigger key.</summary>
+        private static ITrigger SecondTrigger(string cron) => TriggerBuilder.Create()
+            .WithIdentity(SecondTriggerId)
+            .ForJob(Job)
+            .WithCronSchedule(cron)
+            .Build();
+
+        /// <summary>
+        /// A trigger that names only itself. <see cref="TriggerBuilder.Build"/> leaves
+        /// <see cref="ITrigger.JobKey"/> null in this case, and <see cref="JobBuilder.Build"/>
+        /// substitutes a fresh random <see cref="JobKey"/> for every call.
+        /// </summary>
+        private static ITrigger TriggerWithoutJobKey(string cron) => TriggerBuilder.Create()
+            .WithIdentity(TriggerId)
+            .WithCronSchedule(cron)
+            .Build();
+
+        private static async Task<List<JobHeader>> AllJobs(IScheduler scheduler)
+        {
+            var page = await scheduler.QueryJobs(new JobQuery { Take = PagedQuery.All });
+            return page.Items.ToList();
+        }
+
+        private static async Task<List<TriggerHeader>> TriggersFor(IScheduler scheduler, JobKey jobKey)
+        {
+            var page = await scheduler.QueryTriggers(new TriggerQuery { Job = jobKey, Take = PagedQuery.All });
+            return page.Items.ToList();
+        }
+
+        /// <summary>
+        /// Reads the stored payload. <see cref="QuartzJob"/> stores the message as-is;
+        /// <see cref="QuartzPersistentJob"/> stores it Base64-encoded so it survives a persistent store.
+        /// </summary>
+        private static string StoredMessage(IJobDetail detail)
+        {
+            var stored = detail.JobDataMap[MessageKey];
+            return stored is string text ? text : stored?.ToString();
+        }
+
+        private static string StoredPersistentMessage(IJobDetail detail)
+        {
+            var stored = detail.JobDataMap[MessageKey];
+            if (stored is not string text) return stored?.ToString();
+
+            // Akka's serializer round-trips a string as a quoted JSON string, so the decoded payload
+            // arrives as "new" rather than new.
+            var decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(text));
+            return decoded.Length >= 2 && decoded[0] == '"' && decoded[^1] == '"'
+                ? decoded[1..^1]
+                : decoded;
+        }
+
+        // ---------------------------------------------------------------- QuartzActor
+
+        [Fact]
+        public async Task QuartzActor_Should_Replace_Job_Under_Stable_Identities()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreateJob(probe, "old", Trigger(DormantCron)));
+            var created = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(Job, created.JobKey);
+            Assert.Equal(TriggerId, created.TriggerKey);
+
+            // The same keys without Replacing must be rejected, not silently accepted.
+            quartzActor.Tell(new CreateJob(probe, "old", Trigger(DormantCron)));
+            var failure = ExpectMsg<CreateJobFail>(cancellationToken: cancellationToken);
+            Assert.IsType<ObjectAlreadyExistsException>(failure.Reason);
+
+            // The same keys with Replacing must be accepted and must swap payload and schedule.
+            quartzActor.Tell(new CreateJob(probe, "new", Trigger(FastCron), ScheduleJobOptions.Replacing));
+            var replaced = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(Job, replaced.JobKey);
+            Assert.Equal(TriggerId, replaced.TriggerKey);
+            probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+            Assert.Equal(Job, jobs[0].Key);
+
+            var triggers = await TriggersFor(scheduler, Job);
+            Assert.Single(triggers);
+            Assert.Equal(TriggerId, triggers[0].Key);
+            Assert.Equal(FastCron, Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(TriggerId, cancellationToken)).CronExpressionString);
+
+            var detail = await scheduler.GetJobDetail(Job, cancellationToken);
+            Assert.NotNull(detail);
+            Assert.Equal("new", StoredMessage(detail!));
+
+            // The reported key must resolve to the job that was actually scheduled.
+            Assert.NotNull(await scheduler.GetJobDetail(replaced.JobKey, cancellationToken));
+
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public async Task QuartzActor_Should_Preserve_An_Explicit_Job_Identity()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreateJob(probe, "old", Trigger(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // An explicitly named job must never be renamed by the actor.
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+            Assert.Equal(Job, jobs[0].Key);
+
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public async Task QuartzActor_Should_Not_Orphan_The_Original_Job_When_Replacing_By_Trigger_Identity()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreateJob(probe, "old", TriggerWithoutJobKey(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            quartzActor.Tell(new CreateJob(probe, "new", TriggerWithoutJobKey(FastCron), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            // Replacing the trigger must not leave the original job behind without a trigger.
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+
+            var triggers = await TriggersFor(scheduler, jobs[0].Key);
+            Assert.Single(triggers);
+            Assert.Equal(TriggerId, triggers[0].Key);
+
+            var detail = await scheduler.GetJobDetail(jobs[0].Key, cancellationToken);
+            Assert.NotNull(detail);
+            Assert.Equal("new", StoredMessage(detail!));
+
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public async Task QuartzActor_Should_Not_Remove_Other_Triggers_Of_The_Same_Job()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreateJob(probe, "first", Trigger(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // A second trigger for the same job. Replacing is required because the job key already exists.
+            quartzActor.Tell(new CreateJob(probe, "second", SecondTrigger(DormantCron), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(2, (await TriggersFor(scheduler, Job)).Count);
+
+            // Replacing one trigger must leave the other one alone.
+            quartzActor.Tell(new CreateJob(probe, "first-replaced", Trigger(FastCron), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            probe.ExpectMsg("first-replaced", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            var triggers = await TriggersFor(scheduler, Job);
+            Assert.Equal(2, triggers.Count);
+            Assert.Contains(triggers, t => t.Key.Equals(TriggerId));
+            Assert.Contains(triggers, t => t.Key.Equals(SecondTriggerId));
+
+            Sys.Stop(quartzActor);
+        }
+
+        // ------------------------------------------------------ QuartzPersistentActor
+
+        [Fact]
+        public async Task QuartzPersistentActor_Should_Replace_Job_Under_Stable_Identities()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(
+                Props.Create(() => new CapturingQuartzPersistentActor(Named(Guid.NewGuid().ToString()))), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "old", Trigger(DormantCron)));
+            var created = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(Job, created.JobKey);
+            Assert.Equal(TriggerId, created.TriggerKey);
+
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "old", Trigger(DormantCron)));
+            var failure = ExpectMsg<CreateJobFail>(cancellationToken: cancellationToken);
+            Assert.IsType<ObjectAlreadyExistsException>(failure.Reason);
+
+            quartzActor.Tell(new CreatePersistentJob(
+                probe.Ref.Path, "new", Trigger(FastCron), ScheduleJobOptions.Replacing));
+            var replaced = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(Job, replaced.JobKey);
+            Assert.Equal(TriggerId, replaced.TriggerKey);
+            probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+            Assert.Equal(Job, jobs[0].Key);
+
+            var triggers = await TriggersFor(scheduler, Job);
+            Assert.Single(triggers);
+            Assert.Equal(TriggerId, triggers[0].Key);
+            Assert.Equal(FastCron, Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(TriggerId, cancellationToken)).CronExpressionString);
+
+            var detail = await scheduler.GetJobDetail(Job, cancellationToken);
+            Assert.NotNull(detail);
+            Assert.Equal("new", StoredPersistentMessage(detail!));
+
+            Assert.NotNull(await scheduler.GetJobDetail(replaced.JobKey, cancellationToken));
+
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public async Task QuartzPersistentActor_Should_Not_Orphan_The_Original_Job_When_Replacing_By_Trigger_Identity()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(
+                Props.Create(() => new CapturingQuartzPersistentActor(Named(Guid.NewGuid().ToString()))), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "old", TriggerWithoutJobKey(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            quartzActor.Tell(new CreatePersistentJob(
+                probe.Ref.Path, "new", TriggerWithoutJobKey(FastCron), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+
+            var triggers = await TriggersFor(scheduler, jobs[0].Key);
+            Assert.Single(triggers);
+            Assert.Equal(TriggerId, triggers[0].Key);
+
+            var detail = await scheduler.GetJobDetail(jobs[0].Key, cancellationToken);
+            Assert.NotNull(detail);
+            Assert.Equal("new", StoredPersistentMessage(detail!));
+
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public async Task QuartzPersistentActor_Should_Not_Remove_Other_Triggers_Of_The_Same_Job()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(
+                Props.Create(() => new CapturingQuartzPersistentActor(Named(Guid.NewGuid().ToString()))), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "first", Trigger(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            quartzActor.Tell(new CreatePersistentJob(
+                probe.Ref.Path, "second", SecondTrigger(DormantCron), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(2, (await TriggersFor(scheduler, Job)).Count);
+
+            quartzActor.Tell(new CreatePersistentJob(
+                probe.Ref.Path, "first-replaced", Trigger(FastCron), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            probe.ExpectMsg("first-replaced", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            var triggers = await TriggersFor(scheduler, Job);
+            Assert.Equal(2, triggers.Count);
+            Assert.Contains(triggers, t => t.Key.Equals(TriggerId));
+            Assert.Contains(triggers, t => t.Key.Equals(SecondTriggerId));
+
+            Sys.Stop(quartzActor);
+        }
+
+        // ------------------------------------------------------------------- helpers
+
+        private static NameValueCollection Named(string schedulerName) =>
+            new NameValueCollection { [QuartzActor.PropertySchedulerInstanceName] = schedulerName };
+
+        private sealed record SchedulerCaptured(IScheduler Scheduler);
+
+        private sealed class CapturingQuartzActor : QuartzActor
+        {
+            protected override void OnSchedulerCreated(IScheduler scheduler) =>
+                Context.System.EventStream.Publish(new SchedulerCaptured(scheduler));
+        }
+
+        private sealed class CapturingQuartzPersistentActor : QuartzPersistentActor
+        {
+            public CapturingQuartzPersistentActor(NameValueCollection props) : base(props) { }
+
+            protected override void OnSchedulerCreated(IScheduler scheduler)
+            {
+                base.OnSchedulerCreated(scheduler);
+                Context.System.EventStream.Publish(new SchedulerCaptured(scheduler));
+            }
+        }
+    }
+}
