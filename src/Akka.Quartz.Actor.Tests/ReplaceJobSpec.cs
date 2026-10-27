@@ -70,6 +70,12 @@ namespace Akka.Quartz.Actor.Tests
             .WithCronSchedule(cron)
             .Build();
 
+        /// <summary>A trigger with an explicit name and group, and no job identity.</summary>
+        private static ITrigger TriggerWithoutJobKey(string cron, string name, string group) => TriggerBuilder.Create()
+            .WithIdentity(name, group)
+            .WithCronSchedule(cron)
+            .Build();
+
         private static async Task<List<JobHeader>> AllJobs(IScheduler scheduler)
         {
             var page = await scheduler.QueryJobs(new JobQuery { Take = PagedQuery.All });
@@ -132,6 +138,15 @@ namespace Akka.Quartz.Actor.Tests
             Assert.Equal(Job, replaced.JobKey);
             Assert.Equal(TriggerId, replaced.TriggerKey);
             probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            // The original payload must not be delivered after the replacement. The replacement
+            // schedule keeps firing, so drain what arrives and assert none of it is the old message.
+            var delivered = probe.ReceiveWhile<string>(
+                TimeSpan.FromSeconds(2),
+                msg => msg as string,
+                100,
+                cancellationToken);
+            Assert.DoesNotContain("old", delivered);
 
             var jobs = await AllJobs(scheduler);
             Assert.Single(jobs);
@@ -233,6 +248,70 @@ namespace Akka.Quartz.Actor.Tests
             Sys.Stop(quartzActor);
         }
 
+        [Fact]
+        public async Task QuartzActor_Should_Derive_Distinct_Job_Keys_From_Trigger_Identity()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            // Same name, different group.
+            quartzActor.Tell(new CreateJob(probe, "a", TriggerWithoutJobKey(DormantCron, "same-name", "group-one")));
+            var first = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // Same name, different group again.
+            quartzActor.Tell(new CreateJob(probe, "b", TriggerWithoutJobKey(DormantCron, "same-name", "group-two")));
+            var second = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // Different name, same group as the first.
+            quartzActor.Tell(new CreateJob(probe, "c", TriggerWithoutJobKey(DormantCron, "other-name", "group-one")));
+            var third = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // Both the trigger name and the trigger group must participate, so all three are distinct.
+            Assert.Equal(new JobKey("same-name", "group-one"), first.JobKey);
+            Assert.Equal(new JobKey("same-name", "group-two"), second.JobKey);
+            Assert.Equal(new JobKey("other-name", "group-one"), third.JobKey);
+
+            var jobs = await AllJobs(scheduler);
+            Assert.Equal(3, jobs.Count);
+            Assert.Equal(3, jobs.Select(j => j.Key).Distinct().Count());
+
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public async Task QuartzActor_Should_Not_Overwrite_An_Explicitly_Named_Job_When_Deriving()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            // A job named explicitly, under the same name and group a derived key would use.
+            quartzActor.Tell(new CreateJob(probe, "explicit", Trigger(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // A trigger with that same identity and no ForJob derives the same job key, so without
+            // Replacing it must be rejected rather than silently overwriting the explicit job.
+            quartzActor.Tell(new CreateJob(probe, "derived", TriggerWithoutJobKey(DormantCron, "greeting-job", JobKey.DefaultGroup)));
+            var failure = ExpectMsg<CreateJobFail>(cancellationToken: cancellationToken);
+            Assert.IsType<ObjectAlreadyExistsException>(failure.Reason);
+
+            // The explicit job is untouched.
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+            Assert.Equal(Job, jobs[0].Key);
+
+            var detail = await scheduler.GetJobDetail(Job, cancellationToken);
+            Assert.NotNull(detail);
+            Assert.Equal("explicit", StoredMessage(detail!));
+
+            Sys.Stop(quartzActor);
+        }
+
         // ------------------------------------------------------ QuartzPersistentActor
 
         [Fact]
@@ -260,6 +339,15 @@ namespace Akka.Quartz.Actor.Tests
             Assert.Equal(Job, replaced.JobKey);
             Assert.Equal(TriggerId, replaced.TriggerKey);
             probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            // The original payload must not be delivered after the replacement. The replacement
+            // schedule keeps firing, so drain what arrives and assert none of it is the old message.
+            var delivered = probe.ReceiveWhile<string>(
+                TimeSpan.FromSeconds(2),
+                msg => msg as string,
+                100,
+                cancellationToken);
+            Assert.DoesNotContain("old", delivered);
 
             var jobs = await AllJobs(scheduler);
             Assert.Single(jobs);
