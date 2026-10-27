@@ -15,9 +15,22 @@ namespace Akka.Quartz.Actor.Commands
         /// <param name="message">Message to be scheduled</param>
         /// <param name="trigger">Job execution trigger</param>
         /// <param name="options">Job options</param>
-        /// <remarks>ScheduleJobOptions has single property Replace (can also be specified using static method ScheduleJobOptions.Replacing).
-        /// When set to false (the default), attempting to schedule a job or trigger with a key that already exists throws an ObjectAlreadyExistsException.
-        /// When set to true, it overwrites any already stored jobs and/or triggers with the same keys in a single operation under the store's lock.
+        /// <remarks>
+        /// <para>
+        /// <see cref="ScheduleJobOptions"/> has a single property, <see cref="ScheduleJobOptions.Replace"/>, which can also be
+        /// specified using the static property <see cref="ScheduleJobOptions.Replacing"/>.
+        /// </para>
+        /// <para>
+        /// When <c>Replace</c> is false (the default), scheduling a job or trigger whose key already exists throws
+        /// <see cref="ObjectAlreadyExistsException"/>.
+        /// </para>
+        /// <para>
+        /// When <c>Replace</c> is true, Quartz overwrites any already stored job and trigger with the same keys in a single
+        /// operation under the store's lock. Replacement matches on keys: a trigger is replaced only when its trigger key
+        /// matches, and a job only when its job key matches. Replacing a trigger does not delete other triggers that point
+        /// at the same job, so a job scheduled under two trigger keys keeps firing on both. To replace a job rather than add
+        /// a second schedule to it, reuse the same job and trigger keys.
+        /// </para>
         /// </remarks>
         public CreateJob(IActorRef to, object message, ITrigger trigger, ScheduleJobOptions options = default)
         {
@@ -45,9 +58,22 @@ namespace Akka.Quartz.Actor.Commands
         /// <summary>
         ///     Job options 
         /// </summary>
-        /// <remarks>ScheduleJobOptions has single property Replace (can also be specified using static method ScheduleJobOptions.Replacing).
-        /// When set to false (the default), attempting to schedule a job or trigger with a key that already exists throws an ObjectAlreadyExistsException.
-        /// When set to true, it overwrites any already stored jobs and/or triggers with the same keys in a single operation under the store's lock.
+        /// <remarks>
+        /// <para>
+        /// <see cref="ScheduleJobOptions"/> has a single property, <see cref="ScheduleJobOptions.Replace"/>, which can also be
+        /// specified using the static property <see cref="ScheduleJobOptions.Replacing"/>.
+        /// </para>
+        /// <para>
+        /// When <c>Replace</c> is false (the default), scheduling a job or trigger whose key already exists throws
+        /// <see cref="ObjectAlreadyExistsException"/>.
+        /// </para>
+        /// <para>
+        /// When <c>Replace</c> is true, Quartz overwrites any already stored job and trigger with the same keys in a single
+        /// operation under the store's lock. Replacement matches on keys: a trigger is replaced only when its trigger key
+        /// matches, and a job only when its job key matches. Replacing a trigger does not delete other triggers that point
+        /// at the same job, so a job scheduled under two trigger keys keeps firing on both. To replace a job rather than add
+        /// a second schedule to it, reuse the same job and trigger keys.
+        /// </para>
         /// </remarks>
         public ScheduleJobOptions Options { get; private set; }
     }
