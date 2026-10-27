@@ -129,10 +129,10 @@ namespace Akka.Quartz.Actor
                     {
                         var job =
                         QuartzJob.CreateBuilderWithData(createJob.To, createJob.Message)
-                            .WithIdentity(createJob.Trigger.JobKey)
+                            .WithIdentity(ResolveJobKey(createJob.Trigger))
                             .Build();
                         await Scheduler.ScheduleJob(job, createJob.Trigger, createJob.Options);
-                        Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
+                        Context.Sender.Tell(new JobCreated(job.Key, createJob.Trigger.Key));
                     }
                     catch (Exception ex)
                     {
@@ -141,6 +141,39 @@ namespace Akka.Quartz.Actor
                 }
             });
         }
+
+        /// <summary>
+        /// The job key to schedule a trigger under.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// An explicitly named job is always preserved. When the trigger names no job,
+        /// <see cref="JobBuilder.Build"/> would otherwise mint a fresh random <see cref="JobKey"/> on
+        /// every call, so each create command would target a different job. Quartz replaces a trigger
+        /// by key and removes the old trigger without deleting the job it pointed at, so a replacement
+        /// would leave the original job behind with no trigger.
+        /// </para>
+        /// <para>
+        /// Deriving the key from the trigger identity keeps the mapping stable across commands, which
+        /// is what makes <see cref="ScheduleJobOptions.Replacing"/> replace the job rather than orphan
+        /// it. Both the trigger name and the trigger group participate, so distinct trigger identities
+        /// produce distinct job identities.
+        /// </para>
+        /// <para>
+        /// The derived key reuses the trigger's own name and group, so it can coincide with a job that
+        /// was named explicitly under the same name and group. That collision is deliberate: it keeps
+        /// the mapping predictable, and a caller who names a job explicitly and also schedules a
+        /// trigger of the same identity is already addressing one job. Callers who need to keep the two
+        /// apart should give the trigger an explicit <c>ForJob</c> identity.
+        /// </para>
+        /// <para>
+        /// This does not clean up jobs that earlier versions already orphaned in a persistent store.
+        /// Those records have random keys and no trigger, so they cannot be attributed to a caller
+        /// safely; removing them automatically would risk deleting a job someone else still owns.
+        /// </para>
+        /// </remarks>
+        protected static JobKey ResolveJobKey(ITrigger trigger) =>
+            trigger.JobKey ?? new JobKey(trigger.Key.Name, trigger.Key.Group);
 
         protected virtual void RemoveJobCommand(RemoveJob removeJob)
         {
