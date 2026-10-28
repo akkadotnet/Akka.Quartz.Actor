@@ -291,7 +291,35 @@ Scheduler lifecycle and scheduling APIs also changed; follow the compiler errors
 
 **Check every `new QuartzPersistentActor("name")`.** Under Quartz 3, that constructor returned an existing scheduler registered under the same name, so it could attach to a persistent scheduler configured elsewhere in the process. Quartz 4 has no such registry: the constructor always creates a new scheduler with the default **in-memory** job store. Jobs are still accepted and reported as created, but they are lost when the process stops. The constructor is now `[Obsolete]`. Pass the job store properties instead, or supply the scheduler. This is the walkthrough's upgraded configuration:
 
-Prior to version 1.5.71 Akka.Quartz.Actor replacing an existing job required sending the `RemoveJob` command followed by  `CreateJob` or `CreatePersistentJob`. `CreateJob` and `CreatePersistentJob` commands now support replacing existing jobs if they exist by specifying  `Options` property of `ScheduleJobOptions` type. The job to be replaced must match on both job and trigger keys.    
+### Replacing an existing job
+
+Before 1.5.71, replacing a job meant sending `RemoveJob` and then a create command. `CreateJob` and `CreatePersistentJob` now accept an `Options` property of type `ScheduleJobOptions`; pass `ScheduleJobOptions.Replacing` to replace an existing job in one operation instead.
+
+Replacement matches on keys. A trigger is replaced only when its trigger key matches, and a job only when its job key matches. Replacing a trigger does not delete the job's other triggers, so a job scheduled under two trigger keys keeps firing on both. To replace a job rather than add a second schedule to it, reuse the same job and trigger keys.
+
+**Name the job explicitly with `ForJob(...)`.** When a trigger carries no job identity, the actor derives the job key from the trigger's name and group. That keeps repeated commands for the same trigger identity addressing the same job, but it also means a derived key can coincide with a job you named explicitly under the same name and group. Scheduling such a trigger with `Replacing` overwrites that explicit job, including its recipient and payload, while the explicit job's own trigger survives and then executes the replacement. Give the trigger an explicit `ForJob` identity whenever the two must stay apart.
+
+#### Jobs created before this upgrade
+
+Jobs scheduled by an earlier version were stored under a **randomly generated** job key, because the actor passed a null job key to Quartz and Quartz generated one. Those keys are not derived from the trigger identity, so they do not match the key this version derives.
+
+Replacing such a job with a freshly built trigger that has no `ForJob` identity therefore creates a **new** job under the derived key and leaves the old record behind with no trigger pointing at it. The old job stops firing, but its row remains in the store.
+
+To replace a legacy job in place, name its stored key explicitly:
+
+```csharp
+// Read the key the job was actually stored under, then reuse it.
+var existing = await scheduler.GetJobDetail(new JobKey("legacy-job"));
+var trigger = TriggerBuilder.Create()
+    .WithIdentity("legacy-trigger")
+    .ForJob(existing.Key)          // the stored key, not a derived one
+    .WithCronSchedule("0 0/5 * * * ?")
+    .Build();
+
+quartzActor.Tell(new CreateJob(receiver, "new payload", trigger, ScheduleJobOptions.Replacing));
+```
+
+This version does not clean up jobs that earlier versions already orphaned. Those records have random keys and no trigger, so they cannot be attributed to a caller safely, and deleting them automatically could remove a job someone else still owns. Audit the store before upgrading and remove stale rows deliberately.
 
 ```csharp
 var properties = new NameValueCollection

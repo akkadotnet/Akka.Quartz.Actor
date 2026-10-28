@@ -67,6 +67,10 @@ Replacement matches on keys, so name both the job and the trigger:
 
 If the trigger names no job with `ForJob(...)`, the actor derives the job key from the trigger's name and group, so repeated commands for the same trigger identity address the same job.
 
+**Always name the job explicitly.** A derived key can coincide with a job you named explicitly under the same name and group. Scheduling such a trigger with `Replacing` overwrites that explicit job — including its recipient and payload — while the explicit job's own trigger survives and then executes the replacement. Use `ForJob(...)` whenever the two must stay apart.
+
+**Jobs created before 1.5.71** were stored under randomly generated job keys, which do not match the derived key. Replacing one with a fresh trigger that has no `ForJob` identity creates a new job and leaves the old record behind with no trigger. To replace a legacy job in place, name its stored key explicitly with `ForJob(...)`. See the [upgrade guide](docs/upgrading-to-quartz4.md#jobs-created-before-this-upgrade).
+
 ## PersistentActor ##
  The persistent quartz scheduling actor. This allows the jobs to be persisted in the Quartz jobstore and then to work in a new instance of application with new incarnations of the actors.
 
