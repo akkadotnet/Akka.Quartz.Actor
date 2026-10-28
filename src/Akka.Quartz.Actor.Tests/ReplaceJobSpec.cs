@@ -139,8 +139,11 @@ namespace Akka.Quartz.Actor.Tests
             Assert.Equal(TriggerId, replaced.TriggerKey);
             probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
 
-            // The original payload must not be delivered after the replacement. The replacement
-            // schedule keeps firing, so drain what arrives and assert none of it is the old message.
+            // The original schedule is dormant, so it cannot fire in this window regardless of whether
+            // replacement worked. This drain is a bounded observation, not proof that old deliveries
+            // stopped: Quartz clones the job detail into a firing bundle, so an already-dispatched
+            // firing can still execute after replacement. The scheduler-state assertions below are the
+            // actual proof that the job was replaced.
             var delivered = probe.ReceiveWhile<string>(
                 TimeSpan.FromSeconds(2),
                 msg => msg as string,
@@ -197,15 +200,23 @@ namespace Akka.Quartz.Actor.Tests
             var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
 
             quartzActor.Tell(new CreateJob(probe, "old", TriggerWithoutJobKey(DormantCron)));
-            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            var created = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // The derived key must be the trigger's own name and group.
+            var expectedKey = new JobKey(TriggerId.Name, TriggerId.Group);
+            Assert.Equal(expectedKey, created.JobKey);
 
             quartzActor.Tell(new CreateJob(probe, "new", TriggerWithoutJobKey(FastCron), ScheduleJobOptions.Replacing));
-            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            var replaced = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
             probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            // The replacement must reuse the same job identity, not delete and recreate under a new key.
+            Assert.Equal(expectedKey, replaced.JobKey);
 
             // Replacing the trigger must not leave the original job behind without a trigger.
             var jobs = await AllJobs(scheduler);
             Assert.Single(jobs);
+            Assert.Equal(expectedKey, jobs[0].Key);
 
             var triggers = await TriggersFor(scheduler, jobs[0].Key);
             Assert.Single(triggers);
@@ -235,6 +246,10 @@ namespace Akka.Quartz.Actor.Tests
             ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
             Assert.Equal(2, (await TriggersFor(scheduler, Job)).Count);
 
+            // Record the second trigger's schedule and state before the replacement.
+            var secondBefore = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(SecondTriggerId, cancellationToken));
+            var secondStateBefore = await scheduler.GetTriggerState(SecondTriggerId, cancellationToken);
+
             // Replacing one trigger must leave the other one alone.
             quartzActor.Tell(new CreateJob(probe, "first-replaced", Trigger(FastCron), ScheduleJobOptions.Replacing));
             ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
@@ -244,6 +259,11 @@ namespace Akka.Quartz.Actor.Tests
             Assert.Equal(2, triggers.Count);
             Assert.Contains(triggers, t => t.Key.Equals(TriggerId));
             Assert.Contains(triggers, t => t.Key.Equals(SecondTriggerId));
+
+            // The surviving trigger must keep its schedule and state, not merely its key.
+            var secondAfter = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(SecondTriggerId, cancellationToken));
+            Assert.Equal(secondBefore.CronExpressionString, secondAfter.CronExpressionString);
+            Assert.Equal(secondStateBefore, await scheduler.GetTriggerState(SecondTriggerId, cancellationToken));
 
             Sys.Stop(quartzActor);
         }
@@ -312,6 +332,49 @@ namespace Akka.Quartz.Actor.Tests
             Sys.Stop(quartzActor);
         }
 
+        [Fact]
+        public async Task QuartzActor_Should_Overwrite_An_Explicitly_Named_Job_When_Deriving_With_Replacing()
+        {
+            var cancellationToken = TestContext.Current.CancellationToken;
+            var probe = CreateTestProbe(Sys);
+            Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
+            var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
+            var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
+
+            // An explicit job under the name and group a derived key would use, with its own trigger.
+            quartzActor.Tell(new CreateJob(probe, "explicit", Trigger(DormantCron)));
+            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            // A trigger with that same identity and no ForJob derives the same job key. With Replacing
+            // it overwrites the explicit job - including its recipient and payload - while the explicit
+            // job's own trigger survives and now executes the replacement.
+            //
+            // This is the documented consequence of the identity convention: job and trigger identities
+            // are separate namespaces, and the derived mapping deliberately makes them address one job.
+            quartzActor.Tell(new CreateJob(
+                probe, "derived", TriggerWithoutJobKey(FastCron, "greeting-job", JobKey.DefaultGroup), ScheduleJobOptions.Replacing));
+            var replaced = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            Assert.Equal(Job, replaced.JobKey);
+            probe.ExpectMsg("derived", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            // One job, now carrying the derived payload.
+            var jobs = await AllJobs(scheduler);
+            Assert.Single(jobs);
+            Assert.Equal(Job, jobs[0].Key);
+
+            var detail = await scheduler.GetJobDetail(Job, cancellationToken);
+            Assert.NotNull(detail);
+            Assert.Equal("derived", StoredMessage(detail!));
+
+            // Both triggers remain: the explicit job's trigger and the derived one.
+            var triggers = await TriggersFor(scheduler, Job);
+            Assert.Equal(2, triggers.Count);
+            Assert.Contains(triggers, t => t.Key.Equals(TriggerId));
+            Assert.Contains(triggers, t => t.Key.Equals(new TriggerKey("greeting-job", JobKey.DefaultGroup)));
+
+            Sys.Stop(quartzActor);
+        }
+
         // ------------------------------------------------------ QuartzPersistentActor
 
         [Fact]
@@ -340,8 +403,11 @@ namespace Akka.Quartz.Actor.Tests
             Assert.Equal(TriggerId, replaced.TriggerKey);
             probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
 
-            // The original payload must not be delivered after the replacement. The replacement
-            // schedule keeps firing, so drain what arrives and assert none of it is the old message.
+            // The original schedule is dormant, so it cannot fire in this window regardless of whether
+            // replacement worked. This drain is a bounded observation, not proof that old deliveries
+            // stopped: Quartz clones the job detail into a firing bundle, so an already-dispatched
+            // firing can still execute after replacement. The scheduler-state assertions below are the
+            // actual proof that the job was replaced.
             var delivered = probe.ReceiveWhile<string>(
                 TimeSpan.FromSeconds(2),
                 msg => msg as string,
@@ -378,15 +444,21 @@ namespace Akka.Quartz.Actor.Tests
             var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
 
             quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "old", TriggerWithoutJobKey(DormantCron)));
-            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            var created = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+
+            var expectedKey = new JobKey(TriggerId.Name, TriggerId.Group);
+            Assert.Equal(expectedKey, created.JobKey);
 
             quartzActor.Tell(new CreatePersistentJob(
                 probe.Ref.Path, "new", TriggerWithoutJobKey(FastCron), ScheduleJobOptions.Replacing));
-            ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
+            var replaced = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
             probe.ExpectMsg("new", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+
+            Assert.Equal(expectedKey, replaced.JobKey);
 
             var jobs = await AllJobs(scheduler);
             Assert.Single(jobs);
+            Assert.Equal(expectedKey, jobs[0].Key);
 
             var triggers = await TriggersFor(scheduler, jobs[0].Key);
             Assert.Single(triggers);
@@ -417,6 +489,9 @@ namespace Akka.Quartz.Actor.Tests
             ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
             Assert.Equal(2, (await TriggersFor(scheduler, Job)).Count);
 
+            var secondBefore = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(SecondTriggerId, cancellationToken));
+            var secondStateBefore = await scheduler.GetTriggerState(SecondTriggerId, cancellationToken);
+
             quartzActor.Tell(new CreatePersistentJob(
                 probe.Ref.Path, "first-replaced", Trigger(FastCron), ScheduleJobOptions.Replacing));
             ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
@@ -426,6 +501,10 @@ namespace Akka.Quartz.Actor.Tests
             Assert.Equal(2, triggers.Count);
             Assert.Contains(triggers, t => t.Key.Equals(TriggerId));
             Assert.Contains(triggers, t => t.Key.Equals(SecondTriggerId));
+
+            var secondAfter = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(SecondTriggerId, cancellationToken));
+            Assert.Equal(secondBefore.CronExpressionString, secondAfter.CronExpressionString);
+            Assert.Equal(secondStateBefore, await scheduler.GetTriggerState(SecondTriggerId, cancellationToken));
 
             Sys.Stop(quartzActor);
         }

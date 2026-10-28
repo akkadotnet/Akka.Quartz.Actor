@@ -161,15 +161,23 @@ namespace Akka.Quartz.Actor
         /// </para>
         /// <para>
         /// The derived key reuses the trigger's own name and group, so it can coincide with a job that
-        /// was named explicitly under the same name and group. That collision is deliberate: it keeps
-        /// the mapping predictable, and a caller who names a job explicitly and also schedules a
-        /// trigger of the same identity is already addressing one job. Callers who need to keep the two
-        /// apart should give the trigger an explicit <c>ForJob</c> identity.
+        /// was named explicitly under the same name and group. Job and trigger identities are separate
+        /// namespaces in Quartz; this mapping deliberately makes them address one job. The consequence
+        /// is that scheduling such a trigger with <see cref="ScheduleJobOptions.Replacing"/> overwrites
+        /// that explicit job, including its recipient and payload, while the explicit job's own trigger
+        /// survives and then executes the replacement. Callers who need the two kept apart should give
+        /// the trigger an explicit <c>ForJob</c> identity.
         /// </para>
         /// <para>
         /// This does not clean up jobs that earlier versions already orphaned in a persistent store.
         /// Those records have random keys and no trigger, so they cannot be attributed to a caller
         /// safely; removing them automatically would risk deleting a job someone else still owns.
+        /// </para>
+        /// <para>
+        /// An <em>active</em> job created by an earlier version still carries its random key. Replacing
+        /// it with a freshly built trigger that has no <c>ForJob</c> identity creates the derived-key
+        /// job and orphans the old record, because the two keys differ. To replace such a job in place,
+        /// name its stored key explicitly with <c>ForJob</c>.
         /// </para>
         /// </remarks>
         protected static JobKey ResolveJobKey(ITrigger trigger) =>
