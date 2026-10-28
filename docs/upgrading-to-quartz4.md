@@ -322,7 +322,7 @@ Replacement matches on keys. A trigger is replaced only when its trigger key mat
 
 Jobs scheduled by an earlier version **without** a `ForJob(...)` identity were stored under a **randomly generated** job key, because the actor passed a null job key to Quartz and Quartz generated one. Those keys are not derived from the trigger identity, so they do not match the key this version derives. Jobs that already named their job explicitly kept that key and are unaffected.
 
-Replacing such a job with a freshly built trigger that has no `ForJob` identity therefore creates a **new** job under the derived key and leaves the old record behind with no trigger pointing at it. The old job stops firing only if the replaced trigger was its last one; if it had other triggers, it keeps firing on those. Either way its row remains in the store.
+Replacing such a job with a freshly built trigger that has no `ForJob` identity therefore creates a **new** job under the derived key. The old record stays in the store. If the replaced trigger was its last one, the old job stops firing and is left with no trigger pointing at it; if it had other triggers, it keeps firing on those.
 
 To replace a legacy job in place, reuse the key it was actually stored under. The trigger identity is known, so read the job key from the existing trigger:
 
