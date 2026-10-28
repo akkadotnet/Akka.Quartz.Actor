@@ -14,7 +14,7 @@ namespace Akka.Quartz.Actor
 {
     /// <summary>
     /// The base quartz scheduling actor. Handles a single quartz scheduler
-    /// and processes Add and Remove messages.
+    /// and processes CreateJob and RemoveJob commands.
     /// </summary>
     public class QuartzActor : ActorBase
     {
@@ -129,10 +129,10 @@ namespace Akka.Quartz.Actor
                     {
                         var job =
                         QuartzJob.CreateBuilderWithData(createJob.To, createJob.Message)
-                            .WithIdentity(createJob.Trigger.JobKey)
+                            .WithIdentity(ResolveJobKey(createJob.Trigger))
                             .Build();
-                        await Scheduler.ScheduleJob(job, createJob.Trigger);
-                        Context.Sender.Tell(new JobCreated(createJob.Trigger.JobKey, createJob.Trigger.Key));
+                        await Scheduler.ScheduleJob(job, createJob.Trigger, createJob.Options);
+                        Context.Sender.Tell(new JobCreated(job.Key, createJob.Trigger.Key));
                     }
                     catch (Exception ex)
                     {
@@ -141,6 +141,51 @@ namespace Akka.Quartz.Actor
                 }
             });
         }
+
+        /// <summary>
+        /// The job key to schedule a trigger under.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// An explicit job key is honored. When the trigger names no job,
+        /// <see cref="JobBuilder{TJob}.Build"/> would otherwise mint a fresh random <see cref="JobKey"/> on
+        /// every call, so each create command would target a different job. Quartz replaces a trigger
+        /// by key and removes the old trigger without deleting the job it pointed at, so a replacement
+        /// would leave the original job behind, with no trigger if the replaced trigger was its last.
+        /// </para>
+        /// <para>
+        /// Deriving the key from the trigger identity keeps the mapping stable across commands, which
+        /// is what makes <see cref="ScheduleJobOptions.Replacing"/> replace the job rather than orphan
+        /// it. Both the trigger name and the trigger group participate, so distinct trigger identities
+        /// produce distinct job identities. Replacement does not cancel firings Quartz has already
+        /// dispatched; those may still deliver the old message.
+        /// </para>
+        /// <para>
+        /// The derived key reuses the trigger's own name and group, so it can coincide with a job that
+        /// was named explicitly under the same name and group. Job and trigger identities are separate
+        /// namespaces in Quartz; this mapping deliberately makes them address one job. The consequence
+        /// is that scheduling such a trigger with <see cref="ScheduleJobOptions.Replacing"/> overwrites
+        /// that explicit job, including its recipient and payload. If the explicit job also had a
+        /// trigger under a different trigger key, that trigger survives and then executes the
+        /// replacement. Callers who need the two kept apart should give the trigger an explicit
+        /// <c>ForJob</c> identity.
+        /// </para>
+        /// <para>
+        /// This does not clean up jobs that earlier versions already orphaned in a persistent store.
+        /// Those records have random keys and no trigger, so they cannot be attributed to a caller
+        /// safely; removing them automatically would risk deleting a job someone else still owns.
+        /// </para>
+        /// <para>
+        /// An <em>active</em> job created by an earlier version without a <c>ForJob</c> identity still
+        /// carries its random key. Replacing it with a freshly built trigger that has no <c>ForJob</c>
+        /// identity creates the derived-key job and leaves the old record in the store, because the
+        /// two keys differ. The old job is orphaned only if the replaced trigger was its last; otherwise
+        /// it keeps firing on its other triggers. To replace such a job in place, name its stored key
+        /// explicitly with <c>ForJob</c>.
+        /// </para>
+        /// </remarks>
+        protected static JobKey ResolveJobKey(ITrigger trigger) =>
+            trigger.JobKey ?? new JobKey(trigger.Key.Name, trigger.Key.Group);
 
         protected virtual void RemoveJobCommand(RemoveJob removeJob)
         {

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Specialized;
-using System.Threading;
 using Akka.Actor;
 using Akka.Quartz.Actor.Commands;
 using Akka.Quartz.Actor.Events;
@@ -20,8 +19,7 @@ namespace Akka.Quartz.Actor.Tests
             quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
             ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
             probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
-            Thread.Sleep(TimeSpan.FromSeconds(10));
-            probe.ExpectMsg("Hello", cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg("Hello", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
             Sys.Stop(quartzActor);
         }
 
@@ -35,8 +33,22 @@ namespace Akka.Quartz.Actor.Tests
             probe.ExpectMsg("Hello remove", TimeSpan.FromSeconds(11), cancellationToken: TestContext.Current.CancellationToken);
             quartzActor.Tell(new RemoveJob(jobCreated.JobKey, jobCreated.TriggerKey));
             ExpectMsg<JobRemoved>(cancellationToken: TestContext.Current.CancellationToken);
-            Thread.Sleep(TimeSpan.FromSeconds(10));
-            probe.ExpectNoMsg(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            probe.ExpectNoMsg(TimeSpan.FromSeconds(11), TestContext.Current.CancellationToken);
+            Sys.Stop(quartzActor);
+        }
+
+        [Fact]
+        public void QuartzPersistentActor_Should_Replace_Job()
+        {
+            var probe = CreateTestProbe(Sys);
+            var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(Named(Guid.NewGuid().ToString()))), "QuartzActor");
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello old", TriggerBuilder.Create().WithIdentity("greeting").WithCronSchedule("0/3 * * * * ?").Build()));
+            ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg("Hello old", TimeSpan.FromSeconds(4), cancellationToken: TestContext.Current.CancellationToken);
+            
+            quartzActor.Tell(new CreatePersistentJob(probe.Ref.Path, "Hello new", TriggerBuilder.Create().WithIdentity("greeting").WithCronSchedule("0/6 * * * * ?").StartAt(DateTimeOffset.UtcNow).Build(), ScheduleJobOptions.Replacing));
+            ExpectMsg<JobCreated>(cancellationToken: TestContext.Current.CancellationToken);
+            probe.ExpectMsg("Hello new", TimeSpan.FromSeconds(7), cancellationToken: TestContext.Current.CancellationToken);
             Sys.Stop(quartzActor);
         }
 
