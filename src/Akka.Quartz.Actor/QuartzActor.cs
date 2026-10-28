@@ -147,7 +147,7 @@ namespace Akka.Quartz.Actor
         /// </summary>
         /// <remarks>
         /// <para>
-        /// An explicitly named job is always preserved. When the trigger names no job,
+        /// An explicit job key is honored. When the trigger names no job,
         /// <see cref="JobBuilder.Build"/> would otherwise mint a fresh random <see cref="JobKey"/> on
         /// every call, so each create command would target a different job. Quartz replaces a trigger
         /// by key and removes the old trigger without deleting the job it pointed at, so a replacement

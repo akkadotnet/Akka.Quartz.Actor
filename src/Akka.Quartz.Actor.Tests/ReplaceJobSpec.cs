@@ -336,28 +336,35 @@ namespace Akka.Quartz.Actor.Tests
         public async Task QuartzActor_Should_Overwrite_An_Explicitly_Named_Job_When_Deriving_With_Replacing()
         {
             var cancellationToken = TestContext.Current.CancellationToken;
-            var probe = CreateTestProbe(Sys);
+            var explicitProbe = CreateTestProbe(Sys);
+            var derivedProbe = CreateTestProbe(Sys);
             Sys.EventStream.Subscribe(TestActor, typeof(SchedulerCaptured));
             var quartzActor = Sys.ActorOf(Props.Create(() => new CapturingQuartzActor()), "QuartzActor");
             var scheduler = ExpectMsg<SchedulerCaptured>(cancellationToken: cancellationToken).Scheduler;
 
             // An explicit job under the name and group a derived key would use, with its own trigger.
-            quartzActor.Tell(new CreateJob(probe, "explicit", Trigger(DormantCron)));
+            quartzActor.Tell(new CreateJob(explicitProbe, "explicit", Trigger(DormantCron)));
             ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
 
+            var explicitTriggerBefore = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(TriggerId, cancellationToken));
+            var explicitStateBefore = await scheduler.GetTriggerState(TriggerId, cancellationToken);
+
             // A trigger with that same identity and no ForJob derives the same job key. With Replacing
-            // it overwrites the explicit job - including its recipient and payload - while the explicit
-            // job's own trigger survives and now executes the replacement.
+            // it overwrites the explicit job - including its recipient and payload. The explicit job's
+            // own trigger, under a different trigger key, survives and now executes the replacement.
             //
             // This is the documented consequence of the identity convention: job and trigger identities
             // are separate namespaces, and the derived mapping deliberately makes them address one job.
             quartzActor.Tell(new CreateJob(
-                probe, "derived", TriggerWithoutJobKey(FastCron, "greeting-job", JobKey.DefaultGroup), ScheduleJobOptions.Replacing));
+                derivedProbe, "derived", TriggerWithoutJobKey(FastCron, "greeting-job", JobKey.DefaultGroup), ScheduleJobOptions.Replacing));
             var replaced = ExpectMsg<JobCreated>(cancellationToken: cancellationToken);
             Assert.Equal(Job, replaced.JobKey);
-            probe.ExpectMsg("derived", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
 
-            // One job, now carrying the derived payload.
+            // The replacement payload goes to the derived recipient, not the original one.
+            derivedProbe.ExpectMsg("derived", TimeSpan.FromSeconds(5), cancellationToken: cancellationToken);
+            explicitProbe.ExpectNoMsg(TimeSpan.FromSeconds(2), cancellationToken);
+
+            // One job, now carrying the derived payload and the derived recipient.
             var jobs = await AllJobs(scheduler);
             Assert.Single(jobs);
             Assert.Equal(Job, jobs[0].Key);
@@ -365,12 +372,18 @@ namespace Akka.Quartz.Actor.Tests
             var detail = await scheduler.GetJobDetail(Job, cancellationToken);
             Assert.NotNull(detail);
             Assert.Equal("derived", StoredMessage(detail!));
+            Assert.Equal(derivedProbe.Ref, detail!.JobDataMap["actor"]);
 
             // Both triggers remain: the explicit job's trigger and the derived one.
             var triggers = await TriggersFor(scheduler, Job);
             Assert.Equal(2, triggers.Count);
             Assert.Contains(triggers, t => t.Key.Equals(TriggerId));
             Assert.Contains(triggers, t => t.Key.Equals(new TriggerKey("greeting-job", JobKey.DefaultGroup)));
+
+            // The surviving explicit trigger keeps its schedule and state.
+            var explicitTriggerAfter = Assert.IsAssignableFrom<ICronTrigger>(await scheduler.GetTrigger(TriggerId, cancellationToken));
+            Assert.Equal(explicitTriggerBefore.CronExpressionString, explicitTriggerAfter.CronExpressionString);
+            Assert.Equal(explicitStateBefore, await scheduler.GetTriggerState(TriggerId, cancellationToken));
 
             Sys.Stop(quartzActor);
         }
