@@ -24,6 +24,7 @@ class Receiver: ActorBase
     protected override bool Receive(object message)
     {
     	//handle scheduled message here
+        return true;
     }
  }
 var receiver = Sys.ActorOf(Props.Create(() => new Receiver()), "Receiver");
@@ -36,7 +37,7 @@ var quartzActor = Sys.ActorOf(Props.Create(() => new QuartzActor()), "QuartzActo
 
 Send "Hello" message to Receiver Actor:
 ```csharp
-quartzActor.Tell(new CreateJob(receiver, "Hello", TriggerBuilder.Create().WithCronSchedule( " * * * * * ?").Build())));
+quartzActor.Tell(new CreateJob(receiver, "Hello", TriggerBuilder.Create().WithCronSchedule("0/5 * * * * ?").Build()));
 ```
 
 Now message "Hello" will be delivered to receiver every 5 seconds.
@@ -62,8 +63,10 @@ quartzActor.Tell(new CreateJob(receiver, "Hello again", Trigger("0/5 * * * * ?")
 Replacement matches on keys, so name both the job and the trigger:
 
 - **Reuse the same job and trigger keys** to replace a job. The stored job keeps its identity and takes the new message and schedule.
-- **A different trigger key adds a second schedule** rather than replacing the first. The job then fires on both triggers, because replacing a trigger does not delete the other triggers that point at the same job.
+- **A different trigger key with the same job key adds a second schedule** rather than replacing the first. The job then fires on both triggers, because replacing a trigger does not delete the other triggers that point at the same job.
 - **Without `Replacing`**, scheduling a key that already exists fails with `ObjectAlreadyExistsException` and the actor replies with `CreateJobFail`.
+
+Replacement does not cancel firings Quartz has already dispatched; those may still deliver the old message.
 
 If the trigger names no job with `ForJob(...)`, the actor derives the job key from the trigger's name and group, so repeated commands for the same trigger identity address the same job.
 
@@ -88,7 +91,7 @@ var properties = new NameValueCollection
     ["quartz.serializer.type"] = "newtonsoft"
 };
 var quartzPersistentActor = Sys.ActorOf(Props.Create(() => new QuartzPersistentActor(properties)), "QuartzActor");
-quartzPersistentActor.Tell(new CreatePersistentJob(receiver, "Hello", TriggerBuilder.Create().WithCronSchedule("*0/10 * * * * ?").Build()));
+quartzPersistentActor.Tell(new CreatePersistentJob(receiver.Path, "Hello", TriggerBuilder.Create().WithCronSchedule("0/10 * * * * ?").Build()));
 ```
 
 For more information, please see the unit test.

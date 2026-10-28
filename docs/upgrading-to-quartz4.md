@@ -124,7 +124,7 @@ Things to know:
 
 ## Step 1: Audit the rehearsal copy
 
-Paths B and C. The audit finds everything Quartz 4 will not accept, before you change anything:
+Paths B and C. The audit checks for stored-data incompatibilities before you change anything:
 
 ![Terminal: the audit of the walkthrough's rehearsal copy reports one cron expression that Quartz 4.0.1 rejects, 0 0 9 ? * MON/2, and five binary blobs (four jobs and the holidays calendar) that must be converted; it exits with code 1](images/upgrade/03-audit-before.png)
 
@@ -157,7 +157,10 @@ Paths B and C, only if the audit reported cron findings. Quartz **4.0.1 rejects*
 var cron = new CronExpression("0 0 9 ? * MON/2") { TimeZone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago") };
 var time = DateTimeOffset.UtcNow;
 for (var i = 0; i < 6 && cron.GetNextValidTimeAfter(time) is { } next; i++)
+{
     Console.WriteLine(next.ToString("ddd yyyy-MM-dd HH:mm zzz"));
+    time = next;
+}
 ```
 
 For `0 0 9 ? * MON/2`, Quartz 3.14 fires **every other Monday**, not on Monday, Wednesday and Friday as `2/2` or `MON,WED,FRI` would. No cron expression can say "every other week", so the walkthrough replaces it with a calendar-interval trigger: every two weeks, starting at the trigger's current next fire time, in the same time zone. That keeps the exact sequence of dates.
@@ -314,17 +317,17 @@ system.ActorOf(Props.Create(() => new QuartzPersistentActor(properties)), "quart
 
 Before 1.5.71, replacing a job meant sending `RemoveJob` and then a create command. `CreateJob` and `CreatePersistentJob` now accept an `Options` property of type `ScheduleJobOptions`; pass `ScheduleJobOptions.Replacing` to replace an existing job in one operation instead.
 
-Replacement matches on keys. A trigger is replaced only when its trigger key matches, and a job only when its job key matches. Replacing a trigger does not delete the job's other triggers, so a job scheduled under two trigger keys keeps firing on both. To replace a job rather than add a second schedule to it, reuse the same job and trigger keys.
+Replacement matches on keys. A trigger is replaced only when its trigger key matches, and a job only when its job key matches. Replacing a trigger does not delete the job's other triggers, so a job scheduled under two trigger keys keeps firing on both. To replace a job rather than add a second schedule to it, reuse the same job and trigger keys. Replacement does not cancel firings Quartz has already dispatched; those may still deliver the old message.
 
 **Name the job explicitly with `ForJob(...)`.** When a trigger carries no job identity, the actor derives the job key from the trigger's name and group. That keeps repeated commands for the same trigger identity addressing the same job, but it also means a derived key can coincide with a job you named explicitly under the same name and group. Scheduling such a trigger with `Replacing` overwrites that explicit job, including its recipient and payload. If the explicit job also had a trigger under a *different* trigger key, that trigger survives and then executes the replacement. Give the trigger an explicit `ForJob` identity whenever the two must stay apart.
 
 #### Jobs created before this upgrade
 
-Jobs scheduled by an earlier version **without** a `ForJob(...)` identity were stored under a **randomly generated** job key, because the actor passed a null job key to Quartz and Quartz generated one. Those keys are not derived from the trigger identity, so they do not match the key this version derives. Jobs that already named their job explicitly kept that key and are unaffected.
+Jobs scheduled by an earlier version **without** a `ForJob(...)` identity were stored under a **randomly generated** job key, because the actor passed a null job key to Quartz and Quartz generated one. Those keys are not derived from the trigger identity, so they do not match the key this version derives. Jobs that already named their job explicitly kept that key; continue using it when replacing them.
 
 Replacing such a job with a freshly built trigger that has no `ForJob` identity therefore creates a **new** job under the derived key. The old record stays in the store. If the replaced trigger was its last one, the old job stops firing and is left with no trigger pointing at it; if it had other triggers, it keeps firing on those.
 
-To replace a legacy job in place, reuse the key it was actually stored under. The trigger identity is known, so read the job key from the existing trigger:
+To replace a legacy job in place, reuse the key it was actually stored under. The trigger identity is known, so read the job key from the existing trigger. This example replaces a persistent job through its `QuartzPersistentActor`:
 
 ```csharp
 // The trigger identity is known; the job key it points at is not.
@@ -340,12 +343,14 @@ var trigger = TriggerBuilder.Create()
     .WithCronSchedule("0 0/5 * * * ?")
     .Build();
 
-quartzActor.Tell(new CreateJob(receiver, "new payload", trigger, ScheduleJobOptions.Replacing));
+quartzActor.Tell(new CreatePersistentJob(receiver.Path, "new payload", trigger, ScheduleJobOptions.Replacing));
 ```
 
 This version does not clean up jobs that earlier versions already orphaned. Those records have random keys and no trigger, so they cannot be attributed to a caller safely, and deleting them automatically could remove a job someone else still owns. Audit the store before upgrading and remove stale rows deliberately.
 
-For the same reason, two actors given the same instance name no longer share a scheduler. Supply one scheduler to both if they must share it. An actor shuts down schedulers it creates, and leaves a scheduler you supplied to you. When an actor that owns its scheduler restarts, the new incarnation waits until the previous scheduler with the same instance name has shut down, including its running jobs, before creating its own.
+### Scheduler sharing and startup
+
+Quartz 4 has no scheduler registry, so two actors given the same instance name no longer share a scheduler. Supply one scheduler to both if they must share it. An actor shuts down schedulers it creates, and leaves a scheduler you supplied to you. When an actor that owns its scheduler restarts, the new incarnation waits until the previous scheduler with the same instance name has shut down, including its running jobs, before creating its own.
 
 **Startup order for a scheduler you supply.** Actor-owned schedulers install the persistent actor's context before they start. If you supply the scheduler yourself, create your receivers and the persistent actor first, wait until the actor is ready, and only then start Quartz. Do not let a hosted service start that scheduler earlier.
 
@@ -369,7 +374,7 @@ Start one node of the upgraded application against the rehearsal copy. In the wa
 
 Then check:
 
-1. **Saved jobs still fire.** Wait for a real scheduled delivery to reach its actor, including after a full process restart. This is the only check that proves messages still deserialize.
+1. **Saved jobs still fire.** Wait for a real scheduled delivery to reach its actor, including after a full process restart. This checks that saved messages still deserialize and reach their actors.
 2. **Nothing went missing.** Re-run the baseline queries from [Before you start](#before-you-start) and compare the jobs, triggers and next fire times.
 3. **Overdue jobs behaved as you decided**, according to their misfire instructions.
 4. **Paused groups are still paused.** Re-pause any job groups you had paused through the API; the new `QRTZ_PAUSED_JOB_GRPS` table starts empty.

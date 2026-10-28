@@ -14,7 +14,7 @@ namespace Akka.Quartz.Actor
 {
     /// <summary>
     /// The base quartz scheduling actor. Handles a single quartz scheduler
-    /// and processes Add and Remove messages.
+    /// and processes CreateJob and RemoveJob commands.
     /// </summary>
     public class QuartzActor : ActorBase
     {
@@ -148,16 +148,17 @@ namespace Akka.Quartz.Actor
         /// <remarks>
         /// <para>
         /// An explicit job key is honored. When the trigger names no job,
-        /// <see cref="JobBuilder.Build"/> would otherwise mint a fresh random <see cref="JobKey"/> on
+        /// <see cref="JobBuilder{TJob}.Build"/> would otherwise mint a fresh random <see cref="JobKey"/> on
         /// every call, so each create command would target a different job. Quartz replaces a trigger
         /// by key and removes the old trigger without deleting the job it pointed at, so a replacement
-        /// would leave the original job behind with no trigger.
+        /// would leave the original job behind, with no trigger if the replaced trigger was its last.
         /// </para>
         /// <para>
         /// Deriving the key from the trigger identity keeps the mapping stable across commands, which
         /// is what makes <see cref="ScheduleJobOptions.Replacing"/> replace the job rather than orphan
         /// it. Both the trigger name and the trigger group participate, so distinct trigger identities
-        /// produce distinct job identities.
+        /// produce distinct job identities. Replacement does not cancel firings Quartz has already
+        /// dispatched; those may still deliver the old message.
         /// </para>
         /// <para>
         /// The derived key reuses the trigger's own name and group, so it can coincide with a job that
@@ -177,8 +178,10 @@ namespace Akka.Quartz.Actor
         /// <para>
         /// An <em>active</em> job created by an earlier version without a <c>ForJob</c> identity still
         /// carries its random key. Replacing it with a freshly built trigger that has no <c>ForJob</c>
-        /// identity creates the derived-key job and orphans the old record, because the two keys
-        /// differ. To replace such a job in place, name its stored key explicitly with <c>ForJob</c>.
+        /// identity creates the derived-key job and leaves the old record in the store, because the
+        /// two keys differ. The old job is orphaned only if the replaced trigger was its last; otherwise
+        /// it keeps firing on its other triggers. To replace such a job in place, name its stored key
+        /// explicitly with <c>ForJob</c>.
         /// </para>
         /// </remarks>
         protected static JobKey ResolveJobKey(ITrigger trigger) =>
