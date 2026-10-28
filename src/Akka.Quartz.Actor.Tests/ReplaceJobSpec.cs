@@ -38,7 +38,12 @@ namespace Akka.Quartz.Actor.Tests
     /// </remarks>
     public class ReplaceJobSpec : TestKit.Xunit.TestKit
     {
-        private const string DormantCron = "0 0 0 1 1 ?";
+        /// <summary>
+        /// A schedule that cannot fire during a test run. The year field pins it to 2099, so it is
+        /// dormant regardless of the calendar date - unlike a plain January 1 expression, which would
+        /// fire if the suite happened to run on New Year's Day.
+        /// </summary>
+        private const string DormantCron = "0 0 0 1 1 ? 2099";
         private const string FastCron = "* * * * * ?";
         private const string MessageKey = "message";
 
